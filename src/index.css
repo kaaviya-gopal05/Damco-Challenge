@@ -1,68 +1,98 @@
-:root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+@import "tailwindcss";
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+  /* Brand */
+  --color-brand-50: #f2f4ff;
+  --color-brand-100: #e6e9ff;
+  --color-brand-200: #ced4ff;
+  --color-brand-300: #a8b1ff;
+  --color-brand-400: #7c85f9;
+  --color-brand-500: #5b5ff0;
+  --color-brand-600: #4740e0;
+  --color-brand-700: #3a33bd;
+  --color-brand-800: #302c98;
+  --color-brand-900: #2b297a;
+  --color-brand-950: #191748;
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
-}
+  /* Accent (teal, used for success / active-recall highlights) */
+  --color-accent-50: #eefdf9;
+  --color-accent-100: #d3faf0;
+  --color-accent-200: #aaf2e2;
+  --color-accent-300: #71e5cf;
+  --color-accent-400: #38cfb6;
+  --color-accent-500: #17b39d;
+  --color-accent-600: #0f8f80;
+  --color-accent-700: #107268;
+  --color-accent-800: #135b54;
+  --color-accent-900: #144b46;
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
+  /* Neutral (warm slate) */
+  --color-ink-50: #f7f7f9;
+  --color-ink-100: #eeeef2;
+  --color-ink-200: #dcdce3;
+  --color-ink-300: #bcbcc9;
+  --color-ink-400: #9494a6;
+  --color-ink-500: #75758a;
+  --color-ink-600: #5c5c70;
+  --color-ink-700: #4a4a5a;
+  --color-ink-800: #33333f;
+  --color-ink-900: #1e1e27;
+  --color-ink-950: #131318;
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
-}
+  --shadow-soft: 0 1px 2px 0 rgb(30 30 39 / 0.04), 0 2px 8px -2px rgb(30 30 39 / 0.06);
+  --shadow-card: 0 1px 3px 0 rgb(30 30 39 / 0.06), 0 8px 24px -8px rgb(30 30 39 / 0.10);
+  --shadow-popover: 0 4px 12px -2px rgb(30 30 39 / 0.10), 0 16px 40px -12px rgb(30 30 39 / 0.18);
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
-  cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
-}
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-slide-up: slide-up 0.25s ease-out;
+  --animate-scale-in: scale-in 0.15s ease-out;
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
-  a:hover {
-    color: #747bff;
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
   }
-  button {
-    background-color: #f9f9f9;
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.97); }
+    to { opacity: 1; transform: scale(1); }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--color-ink-200);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    @apply bg-ink-50 text-ink-900 font-sans antialiased;
+  }
+  ::selection {
+    @apply bg-brand-200 text-brand-900;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-ink-300) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--color-ink-300);
+    border-radius: 9999px;
   }
 }
