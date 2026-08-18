@@ -20,7 +20,7 @@ const MAX_CHAT_WIDTH = 80;
 
 function parseOpenParam(open: string | null): ActiveView | null {
   if (!open) return null;
-  if (open === 'videos') return { type: open };
+  if (open === 'videos' || open === 'todo') return { type: open };
   const [type, id] = open.split(':');
   if (id && ['roadmap', 'mindmap', 'flashcards', 'document'].includes(type)) {
     return { type, id } as ActiveView;
@@ -38,6 +38,8 @@ function SpaceDetailContent({ space, spaceId }: { space: Space; spaceId: string 
   const [panelOpen, setPanelOpen] = useState(true);
   const [chatWidthPercent, setChatWidthPercent] = useState(OVERVIEW_CHAT_WIDTH);
   const [isDragging, setIsDragging] = useState(false);
+  const [todoHintActive, setTodoHintActive] = useState(false);
+  const [firstMessage, setFirstMessage] = useState<string | null>(null);
   const commandFlow = useCommandFlow(space);
   const startedFlowRef = useRef<string | null>(null);
 
@@ -53,6 +55,7 @@ function SpaceDetailContent({ space, spaceId }: { space: Space; spaceId: string 
     const parsed = parseOpenParam(searchParams.get('open'));
     if (parsed) openView(parsed);
     const startFlow = searchParams.get('startFlow');
+    const pendingMessage = searchParams.get('firstMessage');
     if (startFlow && FLOW_KINDS.includes(startFlow as FlowKind) && startedFlowRef.current !== spaceId) {
       startedFlowRef.current = spaceId;
       commandFlow.start(startFlow as FlowKind);
@@ -62,6 +65,18 @@ function SpaceDetailContent({ space, spaceId }: { space: Space; spaceId: string 
       setSearchParams(
         (params) => {
           params.delete('startFlow');
+          return params;
+        },
+        { replace: true }
+      );
+    } else if (pendingMessage && startedFlowRef.current !== spaceId) {
+      startedFlowRef.current = spaceId;
+      // Handed off to SpaceChatPanel, which sends it through the same path (and shows the same
+      // "Thinking..." bubble) as a message typed directly into this space's chat.
+      setFirstMessage(pendingMessage);
+      setSearchParams(
+        (params) => {
+          params.delete('firstMessage');
           return params;
         },
         { replace: true }
@@ -96,6 +111,13 @@ function SpaceDetailContent({ space, spaceId }: { space: Space; spaceId: string 
       case 'mindmap':
       case 'flashcards':
         commandFlow.start(id);
+        break;
+      case 'todo':
+        // Unlike the other widgets, this doesn't start a Q&A flow — a task brain-dump needs
+        // no clarifying questions. It just hints/focuses the composer; sending goes straight
+        // through the chat's AI intent classifier (spaces.service.ts's replyToMessage), which
+        // prioritizes and saves the tasks immediately.
+        setTodoHintActive(true);
         break;
       case 'pdf':
         fileInputRef.current?.click();
@@ -135,6 +157,9 @@ function SpaceDetailContent({ space, spaceId }: { space: Space; spaceId: string 
           onUploadMaterial={commandFlow.uploadMaterial}
           onSkipMaterial={commandFlow.skipMaterial}
           isFlowBusy={commandFlow.isBusy}
+          todoHintActive={todoHintActive}
+          onDismissTodoHint={() => setTodoHintActive(false)}
+          firstMessage={firstMessage}
         />
       </div>
 

@@ -1,7 +1,7 @@
-import { Map, Share2, Layers, FileText, PlayCircle } from 'lucide-react';
+import { Map, Share2, Layers, FileText, PlayCircle, ListChecks } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-export type SlashCommandId = 'roadmap' | 'mindmap' | 'flashcards' | 'pdf' | 'videos';
+export type SlashCommandId = 'roadmap' | 'mindmap' | 'flashcards' | 'pdf' | 'videos' | 'todo';
 
 export interface SlashCommand {
   id: SlashCommandId;
@@ -16,6 +16,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { id: 'flashcards', label: '/flashcards', description: 'Generate flashcards', icon: Layers },
   { id: 'pdf', label: '/pdf', description: 'Upload a PDF for AI insights', icon: FileText },
   { id: 'videos', label: '/videos', description: 'Find learning videos', icon: PlayCircle },
+  { id: 'todo', label: '/todo', description: 'To-do Task List', icon: ListChecks },
 ];
 
 export function SlashCommandMenu({ query, onSelect }: { query: string; onSelect: (id: SlashCommandId) => void }) {

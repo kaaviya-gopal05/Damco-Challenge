@@ -1,9 +1,12 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Sparkles, Paperclip, X } from 'lucide-react';
-import { useCreateSpaceFromMessage, useCreateSpace, useAttachToNewSpace } from '@/features/spaces/hooks/useSpaces';
+import { Send, Sparkles, Paperclip, Mic, MicOff, ListChecks, X } from 'lucide-react';
+import { Tooltip } from '@/components/ui';
+import { cn } from '@/lib/utils';
+import { useCreateSpace, useAttachToNewSpace } from '@/features/spaces/hooks/useSpaces';
 import { useUploadDocument } from '@/features/documents/hooks/useDocuments';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
+import { useSpeechToText } from '@/hooks/useSpeechToText';
 import { SLASH_COMMANDS, type SlashCommandId } from '@/features/spaces/components/SlashCommandMenu';
 
 const MAX_LENGTH = 1000;
@@ -16,6 +19,8 @@ const TOPIC_PLACEHOLDER: Record<FlowCommandId, string> = {
   flashcards: 'e.g. Python',
 };
 
+const TODO_PLACEHOLDER = 'e.g. Buy groceries, and then I have an exam next month, and I need to finish this pitch deck tonight';
+
 function isFlowCommand(id: SlashCommandId): id is FlowCommandId {
   return (FLOW_COMMANDS as readonly string[]).includes(id);
 }
@@ -23,7 +28,7 @@ function isFlowCommand(id: SlashCommandId): id is FlowCommandId {
 export function NewSpaceChatPage() {
   const [input, setInput] = useState('');
   const [pendingCommand, setPendingCommand] = useState<FlowCommandId | null>(null);
-  const createFromMessage = useCreateSpaceFromMessage();
+  const [todoHintActive, setTodoHintActive] = useState(false);
   const createSpace = useCreateSpace();
   const attachToNewSpace = useAttachToNewSpace();
   const uploadDocument = useUploadDocument();
@@ -31,8 +36,9 @@ export function NewSpaceChatPage() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const speech = useSpeechToText((text) => setInput(text.slice(0, MAX_LENGTH)));
 
-  const isBusy = createFromMessage.isPending || createSpace.isPending;
+  const isBusy = createSpace.isPending;
   const topic = input.trim();
   const firstName = (profile?.full_name ?? '').trim().split(/\s+/)[0] || 'there';
   const activeCommand = pendingCommand ? SLASH_COMMANDS.find((c) => c.id === pendingCommand) : undefined;
@@ -40,6 +46,7 @@ export function NewSpaceChatPage() {
   async function handleSend() {
     if (!topic || isBusy) return;
     setInput('');
+    setTodoHintActive(false);
     if (pendingCommand) {
       const kind = pendingCommand;
       setPendingCommand(null);
@@ -47,13 +54,26 @@ export function NewSpaceChatPage() {
       navigate(`/app/spaces/${space.id}?startFlow=${kind}`);
       return;
     }
-    const { space } = await createFromMessage.mutateAsync(topic);
-    navigate(`/app/spaces/${space.id}`);
+    // No pending flow — including right after clicking the To-do widget, which only hints the
+    // input rather than setting one. Create the space immediately (a fast DB insert, same as
+    // the widget flows above) and navigate right away — the actual message send + AI reply
+    // (intent classification, and for a task brain-dump, prioritization) happens after
+    // navigation, inside the chat itself, where the normal "Thinking..." bubble shows it's in
+    // progress. This avoids sitting on the welcome screen for the full AI round-trip before
+    // anything visible happens.
+    const title = topic.length > 60 ? `${topic.slice(0, 57)}...` : topic;
+    const space = await createSpace.mutateAsync({ title, goalText: topic });
+    navigate(`/app/spaces/${space.id}?firstMessage=${encodeURIComponent(topic)}`);
   }
 
   function handleWidget(id: SlashCommandId) {
     if (isFlowCommand(id)) {
       setPendingCommand(id);
+      setTodoHintActive(false);
+      textareaRef.current?.focus();
+    } else if (id === 'todo') {
+      setPendingCommand(null);
+      setTodoHintActive(true);
       textareaRef.current?.focus();
     } else if (id === 'pdf') {
       fileInputRef.current?.click();
@@ -130,6 +150,21 @@ export function NewSpaceChatPage() {
             </button>
           </div>
         )}
+        {todoHintActive && (
+          <div className="mb-2 flex items-center justify-between rounded-lg bg-brand-50 px-3 py-1.5">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-brand-700">
+              <ListChecks className="h-3.5 w-3.5" />
+              To-do Task List — type or speak your tasks below, then send. No extra questions.
+            </span>
+            <button
+              onClick={() => setTodoHintActive(false)}
+              className="flex h-5 w-5 items-center justify-center rounded-md text-brand-500 hover:bg-brand-100"
+              aria-label="Cancel"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           value={input}
@@ -140,7 +175,7 @@ export function NewSpaceChatPage() {
               handleSend();
             }
           }}
-          placeholder={pendingCommand ? TOPIC_PLACEHOLDER[pendingCommand] : 'Ask whatever you want....'}
+          placeholder={pendingCommand ? TOPIC_PLACEHOLDER[pendingCommand] : todoHintActive ? TODO_PLACEHOLDER : 'Ask whatever you want....'}
           rows={3}
           autoFocus
           maxLength={MAX_LENGTH}
@@ -158,6 +193,21 @@ export function NewSpaceChatPage() {
             <span className="text-xs text-ink-400">
               {input.length}/{MAX_LENGTH}
             </span>
+            <Tooltip content={speech.isSupported ? (speech.isListening ? 'Stop listening' : 'Speak instead of typing') : 'Voice input is not supported in this browser'}>
+              <button
+                onClick={() => (speech.isListening ? speech.stop() : speech.start())}
+                disabled={!speech.isSupported}
+                className={cn(
+                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                  speech.isListening
+                    ? 'border-rose-300 bg-rose-50 text-rose-600'
+                    : 'border-ink-200 bg-white text-ink-500 hover:bg-ink-50'
+                )}
+                aria-label={speech.isListening ? 'Stop voice input' : 'Start voice input'}
+              >
+                {speech.isListening ? <MicOff className="h-4 w-4 animate-pulse" /> : <Mic className="h-4 w-4" />}
+              </button>
+            </Tooltip>
             <button
               onClick={handleSend}
               disabled={!topic || isBusy}

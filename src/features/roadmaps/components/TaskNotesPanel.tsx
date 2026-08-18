@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Loader2, Sparkles } from 'lucide-react';
 import { AiMarkdown } from '@/components/markdown/AiMarkdown';
+import { NotesExplainPopover } from '@/features/roadmaps/components/NotesExplainPopover';
 import { useTaskNotes } from '@/features/roadmaps/hooks/useRoadmaps';
 import type { RoadmapTask } from '@/types/database';
 
@@ -54,9 +55,15 @@ export function TaskNotesPanel({
 
       <div className="flex-1 overflow-y-auto scrollbar-thin">
         <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
-          <div className="mb-6 flex items-center gap-1.5 text-xs font-medium text-brand-600">
-            <Sparkles className="h-3.5 w-3.5" />
-            AI-generated notes
+          <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-brand-600">
+              <Sparkles className="h-3.5 w-3.5" />
+              AI-generated notes
+            </span>
+            <span className="text-xs text-ink-400">
+              Highlight a word or up to 4 sentences, then press{' '}
+              <kbd className="rounded border border-ink-200 bg-ink-50 px-1 py-0.5 font-mono text-[10px]">⌘/Ctrl+E</kbd> to explain it
+            </span>
           </div>
 
           {isLoading && (
@@ -72,7 +79,11 @@ export function TaskNotesPanel({
             </p>
           )}
 
-          {!isLoading && !isError && notes && <AiMarkdown content={notes} />}
+          {!isLoading && !isError && notes && (
+            <NotesExplainPopover>
+              <AiMarkdown content={notes} />
+            </NotesExplainPopover>
+          )}
         </div>
       </div>
     </div>,

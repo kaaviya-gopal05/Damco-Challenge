@@ -1,11 +1,13 @@
-import { ArrowLeft, Map, Share2, Layers, FileText, PlayCircle, Sparkles } from 'lucide-react';
+import { ArrowLeft, Map, Share2, Layers, FileText, PlayCircle, ListChecks, Sparkles } from 'lucide-react';
 import { Badge, Button, Card, CardContent, SkeletonList } from '@/components/ui';
 import { useSpaceContents } from '@/features/spaces/hooks/useSpaces';
+import { useSpaceTasks } from '@/features/tasks/hooks/useTasks';
 import { SpaceRoadmapView } from '@/features/spaces/components/panels/SpaceRoadmapView';
 import { SpaceMindMapView } from '@/features/spaces/components/panels/SpaceMindMapView';
 import { SpaceFlashcardDeckView } from '@/features/spaces/components/panels/SpaceFlashcardDeckView';
 import { SpaceDocumentView } from '@/features/spaces/components/panels/SpaceDocumentView';
 import { SpaceVideosView } from '@/features/spaces/components/panels/SpaceVideosView';
+import { SpaceTodoView } from '@/features/spaces/components/panels/SpaceTodoView';
 import type { ActiveView } from '@/features/spaces/types';
 import type { SlashCommandId } from '@/features/spaces/components/SlashCommandMenu';
 import type { Space } from '@/types/database';
@@ -58,6 +60,7 @@ export function SpaceArtifactPanel({
   onTriggerCommand: (id: SlashCommandId) => void;
 }) {
   const { data: contents, isLoading } = useSpaceContents(space.id);
+  const { data: tasks } = useSpaceTasks(space.id);
 
   if (activeView.type !== 'overview') {
     return (
@@ -75,6 +78,7 @@ export function SpaceArtifactPanel({
         {activeView.type === 'flashcards' && <SpaceFlashcardDeckView deckId={activeView.id} />}
         {activeView.type === 'document' && <SpaceDocumentView documentId={activeView.id} />}
         {activeView.type === 'videos' && <SpaceVideosView defaultTopic={space.title} />}
+        {activeView.type === 'todo' && <SpaceTodoView spaceId={space.id} />}
       </div>
     );
   }
@@ -218,6 +222,30 @@ export function SpaceArtifactPanel({
           </div>
         </CardContent>
       </Card>
+
+      {tasks && tasks.length > 0 ? (
+        <Card className="cursor-pointer transition-shadow hover:shadow-card" onClick={() => setActiveView({ type: 'todo' })}>
+          <CardContent className="flex items-center gap-2.5 p-4">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+              <ListChecks className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-ink-900">To-do List</p>
+              <p className="truncate text-xs text-ink-400">
+                {tasks.filter((t) => !t.is_completed).length} open task{tasks.filter((t) => !t.is_completed).length === 1 ? '' : 's'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <SourceEmptyCard
+          icon={ListChecks}
+          title="To-do List"
+          description="Speak or type what you need to get done — I'll organize it by priority."
+          actionLabel="Add tasks"
+          onAction={() => onTriggerCommand('todo')}
+        />
+      )}
     </div>
   );
 }

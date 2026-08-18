@@ -11,6 +11,8 @@ import {
   ChevronsRight,
   Plus,
   Briefcase,
+  Calendar,
+  ListChecks,
   MoreHorizontal,
   Trash2,
   type LucideIcon,
@@ -29,6 +31,8 @@ const ICONS: Record<string, LucideIcon> = {
   MessageSquare,
   Archive,
   Briefcase,
+  Calendar,
+  ListChecks,
 };
 
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {

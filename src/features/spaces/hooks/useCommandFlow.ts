@@ -5,8 +5,15 @@ import { useCreateMindMapFromAi } from '@/features/mindmaps/hooks/useMindMaps';
 import { useGenerateDeckFromTopic } from '@/features/flashcards/hooks/useFlashcards';
 import { extractTextFromPdf } from '@/lib/pdf';
 import { notify } from '@/lib/toast';
-import type { Difficulty, Space, SpaceMessageMetadata, SpaceMessageRole } from '@/types/database';
+import { isAffirmative, parseDeadline, parseHours, parseLevel } from '@/features/spaces/hooks/commandFlowParsing';
+import type { Space, SpaceMessageMetadata, SpaceMessageRole } from '@/types/database';
 
+// 'todo' is deliberately not a flow kind here: unlike roadmap/mindmap/flashcards, a task
+// brain-dump needs no clarifying questions — the chat's AI intent classifier
+// (spaces.service.ts's replyToMessage) detects and prioritizes it directly from whatever the
+// learner types or speaks, the moment they hit send. See NewSpaceChatPage.tsx and
+// SpaceDetailPage.tsx for how the "/todo" widget just focuses/hints the input instead of
+// starting a flow.
 export type FlowKind = 'roadmap' | 'mindmap' | 'flashcards';
 
 interface FlowQuestion {
@@ -31,34 +38,6 @@ const FLOW_QUESTIONS: Record<FlowKind, FlowQuestion[]> = {
     { key: 'material', prompt: 'Do you have study material (a PDF) you\'d like this roadmap based on? Reply "yes" or "no".' },
   ],
 };
-
-function isAffirmative(text: string): boolean {
-  const lower = text.trim().toLowerCase();
-  return lower.startsWith('y') || lower.includes('sure') || lower.includes('please');
-}
-
-function parseLevel(text: string): Difficulty {
-  const lower = text.toLowerCase();
-  if (lower.includes('inter')) return 'intermediate';
-  if (lower.includes('adv')) return 'advanced';
-  return 'beginner';
-}
-
-function parseDeadline(text: string): string | undefined {
-  const trimmed = text.trim();
-  const lower = trimmed.toLowerCase();
-  if (!lower || ['no', 'none', 'skip', 'n/a', 'nope'].includes(lower)) return undefined;
-  const isoMatch = trimmed.match(/\d{4}-\d{2}-\d{2}/);
-  if (isoMatch) return isoMatch[0];
-  const parsed = new Date(trimmed);
-  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString().slice(0, 10);
-}
-
-function parseHours(text: string): number {
-  const match = text.match(/\d+(\.\d+)?/);
-  const value = match ? parseFloat(match[0]) : NaN;
-  return Number.isFinite(value) && value > 0 ? value : 2;
-}
 
 export function useCommandFlow(space: Space) {
   const [flow, setFlow] = useState<FlowState | null>(null);

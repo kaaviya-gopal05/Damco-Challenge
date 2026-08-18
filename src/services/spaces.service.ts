@@ -3,6 +3,7 @@ import { getAiService } from '@/services/ai.service';
 import { generateAndCreateRoadmap } from '@/services/roadmaps.service';
 import { createMindMapFromAiTopic } from '@/services/mindmaps.service';
 import { createDeckWithGeneratedCards } from '@/services/flashcards.service';
+import { generateAndCreateTasks } from '@/services/tasks.service';
 import type {
   CareerProfile,
   Difficulty,
@@ -138,10 +139,12 @@ export async function addMessage(
 
 /**
  * Figures out what a chat message is asking for and, when it's clearly a request to generate
- * a roadmap/mind map/flashcards, does the generation right here rather than just replying with
- * text — the reply then carries metadata pointing at what was created so the chat can render an
- * "Open" action. Anything ambiguous (questions, greetings, unclear requests) falls back to a
- * plain conversational reply.
+ * a roadmap/mind map/flashcards/to-do list, does the generation right here rather than just
+ * replying with text — the reply then carries metadata pointing at what was created so the chat
+ * can render an "Open" action. A task brain-dump ("todo") needs no clarifying questions — the
+ * message itself is the input — so pressing enter analyzes and prioritizes it immediately,
+ * whether typed or spoken via the mic. Anything ambiguous (questions, greetings, unclear
+ * requests) falls back to a plain conversational reply.
  */
 async function replyToMessage(
   userId: string,
@@ -181,6 +184,16 @@ async function replyToMessage(
         metadata: { artifactType: 'flashcards', artifactId: deck.id, artifactTitle: deck.title },
       };
     }
+    if (intent.action === 'todo') {
+      const tasks = await generateAndCreateTasks({ userId, spaceId: space.id, brainDump: content });
+      if (tasks.length === 0) {
+        return { content: "I couldn't find any distinct tasks in that — try describing them one at a time.", metadata: {} };
+      }
+      return {
+        content: `Organized ${tasks.length} task${tasks.length === 1 ? '' : 's'} for you, sorted by priority. Click Open below to view them.`,
+        metadata: { artifactType: 'todo', artifactId: space.id, artifactTitle: 'To-do List' },
+      };
+    }
   } catch {
     return { content: "I couldn't generate that just now — please try again.", metadata: {} };
   }
@@ -204,15 +217,6 @@ export async function sendChatMessage(
   return { userMessage, assistantMessage };
 }
 
-export async function createSpaceFromMessage(
-  userId: string,
-  content: string
-): Promise<{ space: Space; userMessage: SpaceMessage; assistantMessage: SpaceMessage }> {
-  const title = content.length > 60 ? `${content.slice(0, 57)}...` : content;
-  const space = await createSpace(userId, { title, goalText: content });
-  const { userMessage, assistantMessage } = await sendChatMessage(userId, space, content);
-  return { space, userMessage, assistantMessage };
-}
 
 /**
  * Spaces unify what used to be separate top-level Goals/Roadmaps/Mind Maps/Flashcards/Documents

@@ -28,7 +28,9 @@ export const VIDEO_CATEGORIES: { id: VideoCategory; label: string }[] = [
 
 export const NAV_ITEMS = [
   { to: '/app', label: 'Dashboard', icon: 'LayoutDashboard', end: true },
+  { to: '/app/calendar', label: 'Calendar', icon: 'Calendar' },
   { to: '/app/spaces', label: 'Spaces', icon: 'MessageSquare' },
   { to: '/app/career', label: 'Career Intelligence', icon: 'Briefcase' },
+  { to: '/app/tasks', label: 'Task List', icon: 'ListChecks' },
   { to: '/app/memory', label: 'Memory', icon: 'Archive' },
 ] as const;

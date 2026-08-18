@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import { Send, Sparkles, Loader2, ArrowUpRight, Map, Share2, Layers, Upload, X } from 'lucide-react';
-import { SkeletonList } from '@/components/ui';
+import { Send, Sparkles, Loader2, ArrowUpRight, Map, Share2, Layers, ListChecks, Upload, X, Mic, MicOff } from 'lucide-react';
+import { SkeletonList, Tooltip } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { useSpaceMessages, useSendChatMessage } from '@/features/spaces/hooks/useSpaces';
+import { useSpeechToText } from '@/hooks/useSpeechToText';
 import { SlashCommandMenu, type SlashCommandId } from '@/features/spaces/components/SlashCommandMenu';
 import { SpaceWidgetBar } from '@/features/spaces/components/SpaceWidgetBar';
 import type { ActiveView } from '@/features/spaces/types';
 import type { FlowState } from '@/features/spaces/hooks/useCommandFlow';
 import type { Space, SpaceMessage } from '@/types/database';
 
-const ARTIFACT_ICON = { roadmap: Map, mindmap: Share2, flashcards: Layers, document: Share2 } as const;
+const ARTIFACT_ICON = { roadmap: Map, mindmap: Share2, flashcards: Layers, document: Share2, todo: ListChecks } as const;
 
 function ArtifactOpenCard({ message, onOpen }: { message: SpaceMessage; onOpen: (view: ActiveView) => void }) {
   const { artifactType, artifactId, artifactTitle } = message.metadata;
@@ -42,6 +43,9 @@ export function SpaceChatPanel({
   onUploadMaterial,
   onSkipMaterial,
   isFlowBusy,
+  todoHintActive,
+  onDismissTodoHint,
+  firstMessage,
 }: {
   space: Space;
   onTriggerCommand: (id: SlashCommandId) => void;
@@ -51,12 +55,21 @@ export function SpaceChatPanel({
   onUploadMaterial: (file: File) => void;
   onSkipMaterial: () => void;
   isFlowBusy: boolean;
+  todoHintActive: boolean;
+  onDismissTodoHint: () => void;
+  /** A message to send automatically the moment this panel mounts — set when the space was just
+   *  created from a plain typed/spoken message on the "new space" screen, so the send (and its
+   *  "Thinking..." bubble) happens here instead of blocking navigation on the AI round-trip. */
+  firstMessage?: string | null;
 }) {
   const { data: messages, isLoading } = useSpaceMessages(space.id);
   const sendMessage = useSendChatMessage(space);
   const [input, setInput] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
   const materialInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const speech = useSpeechToText(setInput);
+  const firstMessageSentRef = useRef(false);
 
   const isSlash = input.startsWith('/');
   const slashQuery = isSlash ? input.slice(1) : '';
@@ -65,6 +78,18 @@ export function SpaceChatPanel({
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages, isBusy]);
+
+  useEffect(() => {
+    if (todoHintActive) textareaRef.current?.focus();
+  }, [todoHintActive]);
+
+  useEffect(() => {
+    if (firstMessage && !firstMessageSentRef.current) {
+      firstMessageSentRef.current = true;
+      sendMessage.mutate(firstMessage);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [firstMessage]);
 
   function handleSelectCommand(id: SlashCommandId) {
     setInput('');
@@ -75,9 +100,14 @@ export function SpaceChatPanel({
     const content = input.trim();
     if (!content || isSlash || isBusy) return;
     setInput('');
+    onDismissTodoHint();
     if (flow) {
       onSubmitFlowAnswer(content);
     } else {
+      // No active flow — including right after the To-do widget's hint, which only focuses
+      // the input rather than asking a question. The chat's own AI intent classifier (see
+      // spaces.service.ts's replyToMessage) reads this message directly: a task brain-dump is
+      // prioritized and saved immediately, with zero follow-up questions.
       await sendMessage.mutateAsync(content);
     }
   }
@@ -92,7 +122,7 @@ export function SpaceChatPanel({
       <div ref={listRef} className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4">
         {isLoading && <SkeletonList rows={3} />}
 
-        {!isLoading && (messages?.length ?? 0) === 0 && (
+        {!isLoading && !isBusy && (messages?.length ?? 0) === 0 && (
           <div className="flex h-full flex-col items-center justify-center gap-3 py-10 text-center">
             <Sparkles className="h-6 w-6 text-brand-400" />
             <p className="text-sm font-medium text-ink-700">Start the conversation</p>
@@ -129,6 +159,21 @@ export function SpaceChatPanel({
 
       <div className="relative border-t border-ink-100 p-3">
         {isSlash && <SlashCommandMenu query={slashQuery} onSelect={handleSelectCommand} />}
+        {todoHintActive && !flow && (
+          <div className="mb-2 flex items-center justify-between rounded-lg bg-brand-50 px-3 py-1.5">
+            <span className="flex items-center gap-1.5 text-xs font-medium text-brand-700">
+              <ListChecks className="h-3.5 w-3.5" />
+              To-do Task List — type or speak your tasks below, then send. No extra questions.
+            </span>
+            <button
+              onClick={onDismissTodoHint}
+              className="flex h-5 w-5 items-center justify-center rounded-md text-brand-500 hover:bg-brand-100"
+              aria-label="Cancel"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
         {flow?.awaitingMaterial ? (
           <div className="flex items-center gap-2">
             <button
@@ -162,6 +207,7 @@ export function SpaceChatPanel({
         ) : (
           <div className="flex items-end gap-2">
             <textarea
+              ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
@@ -170,10 +216,31 @@ export function SpaceChatPanel({
                   handleSend();
                 }
               }}
-              placeholder={flow ? 'Type your answer...' : 'Message, or type / for actions...'}
+              placeholder={
+                flow
+                  ? 'Type your answer...'
+                  : todoHintActive
+                    ? 'e.g. Buy groceries, and then I have an exam next month, and I need to finish this pitch deck tonight'
+                    : 'Message, or type / for actions...'
+              }
               rows={1}
               className="max-h-32 flex-1 resize-none rounded-xl border border-ink-200 bg-white px-3 py-2.5 text-sm text-ink-900 placeholder:text-ink-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
             />
+            <Tooltip content={speech.isSupported ? (speech.isListening ? 'Stop listening' : 'Speak your message') : 'Voice input is not supported in this browser'}>
+              <button
+                onClick={() => (speech.isListening ? speech.stop() : speech.start())}
+                disabled={!speech.isSupported || isBusy}
+                className={cn(
+                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                  speech.isListening
+                    ? 'border-rose-300 bg-rose-50 text-rose-600'
+                    : 'border-ink-200 bg-white text-ink-500 hover:bg-ink-50'
+                )}
+                aria-label={speech.isListening ? 'Stop voice input' : 'Start voice input'}
+              >
+                {speech.isListening ? <MicOff className="h-4 w-4 animate-pulse" /> : <Mic className="h-4 w-4" />}
+              </button>
+            </Tooltip>
             <button
               onClick={handleSend}
               disabled={!input.trim() || isSlash || isBusy}

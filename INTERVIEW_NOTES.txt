@@ -1,0 +1,502 @@
+================================================================================
+ASCEND — AI LEARNING WORKSPACE
+Interview Reference Notes
+================================================================================
+
+
+--------------------------------------------------------------------------------
+1. PROJECT OVERVIEW (IN SIMPLE LANGUAGE)
+--------------------------------------------------------------------------------
+
+Ascend is a single web app that replaces the pile of separate tools a learner
+normally juggles — one app for study plans, one for flashcards, one for PDF
+notes, one for finding YouTube tutorials, a spreadsheet for interview prep,
+a separate calendar, a separate to-do app — with one connected workspace.
+
+The core idea is "Spaces." A Space is a chat-driven workspace built around one
+learning goal (e.g. "Learn React", "Become a Data Scientist"). Inside a Space
+the learner talks to an AI assistant in a chat box, and that assistant can
+generate real, saved content for them: a structured study roadmap, a visual
+mind map, a flashcard deck, insights from an uploaded PDF, curated YouTube
+videos, or a prioritized to-do list — all without leaving the conversation.
+
+Everything generated inside every Space also surfaces in three cross-cutting
+views so the learner never has to remember which Space something lives in:
+  - Memory: every roadmap, mind map, flashcard deck, and document, in one library.
+  - Task List: every to-do task, sorted by priority, across every Space.
+  - Calendar: a day/week/month calendar showing when roadmap tasks are
+    scheduled and when to-do tasks are due.
+
+Outside of Spaces, there's a Dashboard (streaks, study hours, weekly activity),
+a Career Intelligence section (upload a resume, get a skill-gap analysis and
+interview practice questions for a target role), authentication, and settings.
+
+Nothing on the site is faked to look finished. If no AI key is configured, AI
+features fall back to a clearly-labeled "demo" mode that still works end to
+end using deterministic logic — so the product always demos honestly, and
+never silently pretends a feature is doing something it isn't.
+
+
+--------------------------------------------------------------------------------
+2. TECH STACK
+--------------------------------------------------------------------------------
+
+FRONTEND
+  - React 18 + TypeScript (strict mode — no loose "any" types)
+  - Vite — build tool and dev server
+  - Tailwind CSS v4 — utility-first styling, CSS-first theme config
+  - React Router v7 — client-side routing
+  - TanStack Query (React Query) — all server-state fetching/caching/mutations
+  - Zustand — small amount of local UI state (sidebar collapsed, etc.) — NOT
+    used for server data, to avoid having two sources of truth
+  - Lucide React — icon set
+  - Recharts — dashboard charts
+  - react-markdown + remark-gfm + remark-math + rehype-katex — renders AI
+    output as formatted markdown, including math formulas (KaTeX) and diagrams
+  - mermaid — renders flowchart/sequence diagrams that the AI sometimes
+    includes in study notes
+  - date-fns — all date math (roadmap scheduling, calendar grid, task due dates)
+  - pdfjs-dist (PDF.js, the engine behind Firefox's built-in PDF viewer) —
+    extracts raw text from an uploaded PDF entirely in the browser
+  - react-hot-toast — success/error notifications
+  - Web Speech API (native browser API, no library) — voice-to-text for the
+    microphone/voice input feature
+
+BACKEND / DATA
+  - Supabase — this is the entire backend. No custom Node/Express server exists.
+      - Postgres — the database
+      - Supabase Auth — email/password authentication, session management
+      - Supabase Storage — stores uploaded PDF files, private per user
+      - Row Level Security (RLS) — Postgres-level rules so a user can only
+        ever read/write their OWN rows, enforced by the database itself, not
+        just by the app's UI (explained more in the Security section below)
+      - Supabase Edge Functions — one small serverless function (Deno
+        runtime) that proxies AI requests so a paid API key never reaches
+        the browser (explained more below)
+
+AI
+  - Google Gemini (model: gemini-2.5-flash) — the only real AI provider wired
+    in. All AI calls ask Gemini to return structured JSON matching an exact
+    shape, which is parsed straight into TypeScript objects.
+  - A parallel "mock AI service" — deterministic, rule-based logic that
+    produces realistic-looking (clearly labeled as demo) output with zero
+    API key required, so the whole app is explorable with no setup.
+
+TESTING
+  - Vitest — test runner (integrates directly with the Vite config)
+  - @testing-library/react + @testing-library/user-event — component tests
+  - 100+ automated tests covering: spaced-repetition scheduling math, roadmap
+    date scheduling, mind-map tree layout, calendar grid generation, the
+    chat-flow's natural-language parsing helpers, the task-priority parsing
+    heuristic, and both AI service implementations (including Gemini's
+    request/response handling with the network mocked out — no test ever
+    makes a real, billed API call)
+
+TOOLING
+  - ESLint + typescript-eslint — linting
+  - GitHub Actions — CI pipeline that runs lint, type-check, tests, and a
+    production build on every push
+
+
+--------------------------------------------------------------------------------
+3. ARCHITECTURE, EXPLAINED SIMPLY
+--------------------------------------------------------------------------------
+
+This is a single-page application (SPA). There is no traditional backend
+server that the frontend team wrote — the browser talks directly to Supabase
+for almost everything.
+
+  Browser (React app)
+     |
+     |--- talks directly to ---> Supabase (Postgres database, Auth, File Storage)
+     |
+     |--- talks directly to ---> YouTube Data API (only for public video search)
+     |
+     '--- talks to ---> a small Supabase Edge Function ---> Google Gemini API
+                         (this one extra hop exists ONLY to keep the paid
+                          Gemini key off the browser — see Security section)
+
+Inside the React app, the code is organized in layers, each with one job:
+
+  pages/            One file per screen/route (thin — just wires pieces together)
+  features/<name>/  Each product area (roadmaps, flashcards, spaces, career,
+                     calendar, tasks, etc.) has its own components/ and hooks/
+  services/         The ONLY layer allowed to talk to Supabase or the AI API.
+                     Components never call the database directly.
+  hooks (TanStack Query)   Wrap the services layer, handle caching, loading
+                     and error states, and cache invalidation after a change
+  components/ui/    A small design-system (Button, Card, Modal, Input, etc.)
+                     shared by every feature so the whole app looks consistent
+
+Why this layering matters (a good interview talking point): because every
+Supabase/AI call goes through the services/ layer, swapping the real Gemini
+service for the mock one — or later, swapping Supabase for a different
+backend — never touches a single component. The UI only ever depends on a
+TypeScript interface, never a concrete implementation.
+
+
+--------------------------------------------------------------------------------
+4. EVERY FEATURE, EXPLAINED
+--------------------------------------------------------------------------------
+
+AUTHENTICATION
+  Email/password sign up and login via Supabase Auth. A Postgres trigger
+  automatically creates a matching "profile" row the moment someone signs up.
+  Forgot-password sends a reset email; protected routes redirect to /login
+  if there's no active session.
+
+DASHBOARD
+  A home screen showing: current study streak, total study hours, a weekly
+  activity bar chart (Recharts), the learner's active roadmap with progress,
+  flashcards due for review today, recently opened documents, and recommended
+  videos. All numbers come from a "learning_activity" event log table (every
+  completed task, reviewed flashcard, watched video writes one row) — the
+  dashboard is a real query over real events, not hand-waved.
+
+SPACES (the core feature)
+  A Space is a saved, chat-driven workspace for one learning goal. Opening a
+  new Space shows a chat box and a row of "widgets" (Roadmap, Mind Map,
+  Flashcards, PDF, Videos, To-do List). The learner can either type a free
+  message ("I want to learn React") — which an AI classifier reads and
+  automatically decides what to generate — or click a widget directly.
+  Clicking a widget starts a short back-and-forth Q&A right inside the chat
+  (e.g. for a roadmap: "what's your level?", "any deadline?", "hours per
+  day?", "do you have study material to base it on?") before generating the
+  content. Generated content ("artifacts") appear as a card in the chat that
+  can be opened into a split-screen panel next to the conversation.
+  A microphone icon lets the learner speak their answer instead of typing,
+  using the browser's built-in speech-to-text.
+
+ROADMAPS
+  An AI-generated, structured study plan: phases, each containing tasks, each
+  with an estimated number of study hours. Every task has a real date range,
+  calculated from the roadmap's creation date, hours available per day, and
+  each task's estimated hours — a pure scheduling algorithm, no AI involved
+  in the date math itself. Clicking a task shows AI-generated study notes for
+  that specific topic (markdown, with LaTeX formulas and diagrams when
+  relevant). Selecting a word or short passage inside those notes and
+  pressing Ctrl/Cmd+E pops up an instant AI explanation (see AI section below).
+
+MIND MAPS
+  A topic is expanded by AI into a hierarchical tree (root → branches →
+  sub-points), then laid out automatically on a pannable, zoomable canvas the
+  learner can click through to explore or collapse.
+
+FLASHCARDS
+  Cards can be generated by AI from a topic or from an uploaded PDF, or added
+  manually. Studying uses real spaced repetition — the same category of
+  algorithm Anki uses (a simplified SM-2): each review (again/hard/medium/
+  easy) adjusts an "ease factor" and the interval until the card is shown
+  again, and the card graduates through new → learning → mastered. This is
+  math, not AI — no model is involved in the scheduling.
+
+PDF INTELLIGENCE
+  A PDF is uploaded, its text is extracted entirely in the browser (PDF.js —
+  no server involved in extraction), and that text is sent to the AI to
+  produce: a summary, a bulleted list of key points, question/answer pairs,
+  a multiple-choice quiz, and flashcards — all from the same source document.
+
+LEARNING VIDEOS
+  Search for topic-relevant YouTube videos, filterable by difficulty and
+  category. If a YouTube API key is configured, results are live; otherwise
+  a curated, hand-picked catalogue of real, well-known educational videos is
+  used instead (never invented titles or fake statistics), with a visible
+  "Demo data" label so it's never ambiguous.
+
+TO-DO TASK LIST (new)
+  A widget inside a Space where the learner brain-dumps everything on their
+  mind — by typing or by voice — in one free-flowing sentence, e.g. "I need
+  to buy groceries, and then I have an exam next month, and I need to finish
+  a pitch deck tonight." The AI splits that into separate tasks, works out a
+  real due date for each from today's date, and assigns a priority (high/
+  medium/low) based on urgency. Tasks can be checked off or deleted, and show
+  up both in the Space they were created in and in the global Task List page.
+
+CAREER INTELLIGENCE
+  Pick a target role (or type a custom one), then upload a resume (PDF) or
+  paste resume text. The AI reads it and produces: an overall summary, a list
+  of strengths, a list of gaps versus the target role, and a rating (0-5) for
+  each of the 5-8 skills most relevant to that role — this is the "resume →
+  skill calculation" feature, explained in full technical detail in section 5
+  below. From there: a skill-gap table the learner can fine-tune by hand, an
+  "Improve Skill" button per skill that opens AI-recommended videos, courses,
+  study notes, and a 4-question quiz for that specific skill, and an
+  interview-prep tab with 18 AI-generated practice questions (technical,
+  behavioral, system design, coding, resume, HR) with sample answers.
+  Nothing in this section renders until a resume has actually been analyzed
+  for that role — no placeholder/fake data is ever shown as if it were real.
+
+MEMORY
+  A single library page listing every roadmap, mind map, flashcard deck, and
+  document ever generated, across every Space, with a link back to open each
+  one in its Space. Content from a deleted Space is automatically removed
+  from Memory too (cascading delete), so there are never dead links.
+
+CALENDAR (new)
+  A real calendar with Day, Week, and Month views. Month view shows a full
+  grid of that month's dates (including the tail end of the previous/next
+  month to fill the grid cleanly), correctly recalculated every time the
+  learner moves to a different month. It plots two kinds of real, already-
+  computed data: every scheduled roadmap task (on its calculated start date)
+  and every to-do task (on its due date). Clicking any day jumps straight
+  into that day's agenda view.
+
+TASK LIST PAGE (new)
+  Every to-do task from every Space, in one place, grouped and filterable by
+  priority (All/High/Medium/Low), each showing which Space it came from.
+
+GLOBAL SEARCH
+  Cmd/Ctrl+K opens a command palette that searches across roadmaps, tasks,
+  flashcards, documents, mind maps, saved videos, and career resources at once.
+
+SETTINGS
+  Profile editing and sign-out.
+
+
+--------------------------------------------------------------------------------
+5. WHERE AI IS USED, AND EXACTLY HOW IT WORKS
+   (this is the section to know cold for an interview)
+--------------------------------------------------------------------------------
+
+IMPORTANT DISTINCTION TO BE ABLE TO EXPLAIN CLEARLY:
+This project does NOT train or use any custom machine learning model (no
+scikit-learn, no PyTorch, no embeddings database, no classifier). Every
+"smart" feature is powered by ONE thing: prompting a large language model
+(Google Gemini 2.5 Flash) with carefully engineered instructions and asking
+it to return a response in an exact, predefined JSON shape, which is then
+parsed directly into TypeScript objects and saved to the database like any
+other data. This is sometimes called "prompt engineering" or "structured
+output generation" — it's a different technique from classical machine
+learning (no training data, no model training step, no accuracy/loss
+metrics), and it's the honest, accurate way to describe it if asked.
+
+The one piece of genuinely algorithmic (non-AI) "smart" logic in the app is
+the spaced-repetition flashcard scheduler — that's a deterministic formula
+(SM-2 style), not AI, and it's worth being able to name that distinction too.
+
+Every AI-touching feature is defined through ONE shared TypeScript interface
+(AiService) with two interchangeable implementations:
+  - mockAiService — runs with zero configuration, using text-processing
+    heuristics (splitting text into sentences, keyword matching, filling in
+    hand-written templates) to produce realistic, clearly-labeled demo output.
+  - GeminiService — the real implementation, sends a prompt to Gemini and
+    parses the JSON it returns.
+Which one runs is decided in exactly one place in the code, so every screen
+in the app behaves identically whether or not a real AI key is configured —
+this was a deliberate architecture decision so the product could be reviewed
+and demoed by anyone without needing paid API access.
+
+Here is what happens, feature by feature:
+
+1. ROADMAP GENERATION
+   Input: the learner's goal, plus optional level/deadline/hours-per-day and
+   (optionally) extracted text from an uploaded PDF.
+   The prompt asks Gemini to return a JSON object: a title, description,
+   estimated duration, difficulty, and 4-6 phases, each with 2-5 tasks (title,
+   description, estimated hours). If study material was provided, the prompt
+   explicitly instructs the model to base phases/tasks on what that material
+   actually covers rather than generic knowledge of the topic.
+
+2. TASK STUDY NOTES
+   Input: the specific task's title/description plus its roadmap/phase
+   context. The prompt asks for markdown study notes (a short explanation,
+   key terms, examples), told to use LaTeX for any formula and a Mermaid
+   diagram if a process/architecture would genuinely be clearer as a picture
+   — only when it would actually help, not forced in every time.
+
+3. MIND MAP GENERATION
+   Input: a topic. The prompt asks for a nested JSON tree (label +
+   children, 4-6 top-level branches, 2-4 children each), which is then
+   walked recursively to create the individual node rows in the database
+   with an automatically computed pan/zoom layout position for each node.
+
+4. PDF INTELLIGENCE (summary / key points / Q&A / quiz / flashcards)
+   Input: the raw text extracted from the PDF client-side (PDF.js). Five
+   separate, focused prompts are sent against that same text — this keeps
+   each output type simple and reliable to parse rather than one giant prompt
+   trying to do five things at once.
+
+5. RESUME ANALYSIS / SKILL-GAP CALCULATION — the exact feature you asked
+   about in detail:
+   Step 1: The learner either uploads a resume PDF (text extracted in the
+   browser via PDF.js, same mechanism as PDF Intelligence) or pastes resume
+   text directly.
+   Step 2: That raw resume text, plus the target role name (e.g. "Data
+   Scientist" or a custom-typed role), is sent to Gemini in one prompt. The
+   prompt explicitly instructs the model to act as "an expert career coach,"
+   read every line of the resume, and:
+     - write a 2-3 sentence overall summary
+     - list 3-6 concrete strengths actually found in the resume
+     - list 3-6 concrete gaps relative to that specific target role
+     - identify the 5-8 skills most relevant to that role, and for each one
+       rate the candidate's current level 0-5 and the level typically
+       expected for that role 0-5
+   Step 3 (the important part): the prompt explicitly says "base every
+   judgment strictly on what is actually written in the resume, do not
+   invent experience that isn't there." This is the actual mechanism behind
+   "how does it calculate skills" — it's not measuring anything numerically
+   (no keyword-frequency count, no embedding similarity score); it's an LLM
+   doing reading comprehension against explicit instructions not to
+   hallucinate, and returning its judgment as a structured number so the UI
+   can render it as a progress bar / table row.
+   Step 4: The result is saved to the learner's career profile. The "skill
+   gap" UI and the "fine-tune your skill levels" table only ever render once
+   this real analysis exists for that specific role — before that, a clear
+   empty state is shown instead of stale or placeholder numbers.
+   Step 5: the learner can manually adjust any AI-suggested skill level
+   afterward — the AI's numbers are a starting point, not a locked verdict.
+
+6. INTERVIEW QUESTION GENERATION
+   Input: target role + the gaps identified in step 5 above. The prompt asks
+   for exactly 18 questions (3 each across technical, behavioral, system
+   design, coding, resume, and HR categories), each with a sample answer,
+   explicitly weighted toward the candidate's known gaps where relevant.
+
+7. SKILL IMPROVEMENT PLAN ("Improve Skill" button)
+   Input: one specific skill name. One prompt returns: markdown study notes
+   for that skill, two realistic course recommendations from real platforms
+   (Coursera, Udemy, etc.), and a 4-question multiple-choice quiz testing
+   that skill.
+
+8. CHAT INTENT CLASSIFICATION
+   Input: whatever free-text the learner types into a Space's chat box. A
+   small, fast classification prompt decides whether they're asking for a
+   roadmap, a mind map, flashcards, or just want to chat — this is what lets
+   someone type "I want to become a data scientist" directly into the chat
+   and have the right thing happen automatically, without needing to know
+   the exact widget/command to click.
+
+9. TEXT-SELECTION EXPLAIN (new — the notes highlight-and-explain feature)
+   Input: whatever text the learner highlights inside AI-generated roadmap
+   task notes, but ONLY once they press Ctrl/Cmd+E. A pure, non-AI function
+   first classifies the selection: exactly one word → "word" mode; up to
+   4 sentences → "passage" mode; anything longer → ignored entirely (nothing
+   happens, even if the shortcut is pressed) so the feature can't be misused
+   to summarize an entire page in one shortcut press. For "word" mode, the
+   prompt asks for a short, simple definition plus one example sentence
+   showing it used in context. For "passage" mode, the prompt asks for the
+   same passage rewritten in 2-3 simpler sentences, as if explaining it to
+   someone new to the topic. The result appears in a small popover right
+   next to the highlighted text.
+
+10. PRIORITIZED TASK LIST (new — the to-do voice/text feature)
+    Input: one free-form "brain dump" sentence, typed or spoken, plus
+    today's date. The prompt asks Gemini to split it into individual tasks,
+    resolve any relative time phrase ("tonight", "next week", "one month
+    after") into a real calendar date based on today's date, and assign a
+    priority — "high" for anything due today/tonight, "medium" for anything
+    else with a firm date, "low" for anything with no time reference at all.
+    The mock (no-API-key) version of this one is worth mentioning
+    specifically because it's a genuinely useful heuristic in its own right:
+    it splits the sentence on connector phrases like "and then" and on
+    periods, scans each resulting clause for urgency words ("tonight",
+    "today") and relative-time patterns ("one month after", "in two weeks"),
+    resolves those into real dates using date-fns date arithmetic, and
+    strips the time-phrase and filler words ("I want to...", "I need to...")
+    to produce a clean task title — entirely with regular expressions and
+    date math, no AI call at all, so the feature is fully explorable even
+    without any API key configured.
+
+VOICE INPUT
+  Not an AI feature by itself — it uses the browser's native Web Speech API
+  (SpeechRecognition) to convert speech to text live, in the browser, with no
+  network call and no third-party service. The resulting text is simply
+  typed into the same chat input the learner could have typed into by hand,
+  so everything downstream (intent classification, the to-do parser, etc.)
+  treats voice input exactly the same as typed input.
+
+
+--------------------------------------------------------------------------------
+6. WHICH AI MODEL, AND HOW IT'S CALLED (SECURITY-CONSCIOUS DESIGN)
+--------------------------------------------------------------------------------
+
+Model: Google Gemini 2.5 Flash (gemini-2.5-flash), Google's fast, low-cost
+model tier — a deliberate choice given this is a high-frequency, short-prompt
+workload (single JSON responses, not long multi-turn reasoning), where a
+faster/cheaper model is the right tradeoff over a larger, slower one.
+
+How it's actually called (a strong interview talking point on security
+awareness): the Gemini API key is NEVER present in the browser. Early in
+development it was — that's a common mistake, worth being honest about — but
+it was corrected: every `VITE_`-prefixed environment variable in a Vite app
+gets compiled directly into the JavaScript bundle that ships to the browser,
+which means anyone could open the browser's Network tab or read the bundled
+JS and steal a client-side key. Since Gemini is a metered, billable API, that
+would mean someone could run up a real bill on a stolen key.
+
+The fix: a small Supabase Edge Function (`ai-complete`) was added. It:
+  1. Requires the caller to have a valid, logged-in Supabase session (rejects
+     anyone unauthenticated with a 401) — defense in depth, since this
+     function is the only thing standing in front of a billed API.
+  2. Reads the actual Gemini API key from a server-side secret
+     (`Deno.env.get('GEMINI_API_KEY')`) that is set via the Supabase CLI and
+     never appears in any file that ships to the browser.
+  3. Forwards the prompt to Gemini and returns the response.
+The browser's GeminiService class now calls this Edge Function (via
+`supabase.functions.invoke(...)`, authenticated with the user's session)
+instead of calling Google directly. The only thing that ever reaches the
+browser now is a plain boolean feature flag (`VITE_AI_ENABLED=true`) — not
+a secret, just an on/off switch for "use the real AI service instead of the
+mock one." This was verified concretely by grepping the final production
+JavaScript bundle for the actual key value — it is not present anywhere in it.
+
+Other security practices worth mentioning: Row Level Security is enabled on
+every single table in the database (Postgres itself enforces "a user can
+only see/change their own rows" — even if the frontend had a bug, the
+database is the real enforcement point, not just the UI); the Supabase anon
+key is the only key that ships to the browser, by design, since RLS makes it
+harmless on its own; `.env` files are gitignored and were verified to have
+never been committed to git history before the project was made public;
+and the YouTube API key (a lower-risk, intentionally client-side key) is
+recommended to be restricted by HTTP referrer in the Google Cloud Console.
+
+
+--------------------------------------------------------------------------------
+7. TESTING
+--------------------------------------------------------------------------------
+
+100+ automated tests run via Vitest, covering:
+  - Pure logic: spaced-repetition math, roadmap date scheduling, mind-map
+    tree layout, calendar month/week grid generation, the chat's natural-
+    language parsing (dates, yes/no replies, hour counts), and the to-do
+    heuristic's clause-splitting/date-resolution logic.
+  - The AI service contract: mockAiService is tested against real and
+    edge-case input (empty text, an unrecognized goal, an unreadable resume)
+    to confirm it always degrades sensibly; GeminiService is tested with the
+    network boundary mocked out, covering a well-formed response, a network/
+    server error, an empty response, and malformed JSON from the model —
+    none of these tests make a real, billed API call.
+  - A couple of component tests proving the React Testing Library setup
+    renders and interacts correctly.
+A GitHub Actions CI pipeline runs lint, TypeScript type-checking, the full
+test suite, and a production build automatically on every push and pull
+request.
+
+
+--------------------------------------------------------------------------------
+8. CONCLUSION
+--------------------------------------------------------------------------------
+
+Ascend is a full-stack, AI-integrated learning platform built as a single
+React SPA on top of Supabase, with no custom backend server except one small,
+security-motivated Edge Function. Its defining engineering decisions are:
+  - A strict service-layer boundary so every Supabase/AI call lives in one
+    place, making the mock/real AI split (and any future backend swap)
+    a change that never touches UI code.
+  - Every AI-dependent feature works identically, with zero setup, via a
+    deterministic, clearly-labeled mock implementation — while the real
+    implementation is a disciplined set of structured-JSON prompts against
+    Google Gemini, not a trained ML model.
+  - Security treated as a first-class concern, not an afterthought: Row
+    Level Security on every table, and a billed API key moved server-side
+    behind an authenticated proxy function after recognizing the risk of
+    shipping it to the browser.
+  - A real automated test suite (100+ tests, CI-enforced) covering both the
+    deterministic logic and the AI service contracts, without ever depending
+    on a live, billed model call to pass.
+
+The result is a product that demonstrates the same engineering discipline
+whether or not it's connected to a real AI provider — which is exactly the
+property that makes it safe to hand to anyone (a reviewer, an interviewer, a
+teammate) to run and evaluate immediately, with nothing hidden or faked.
+================================================================================

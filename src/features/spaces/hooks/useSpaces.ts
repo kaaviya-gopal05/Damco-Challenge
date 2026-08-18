@@ -90,6 +90,9 @@ export function useSendChatMessage(space: Space) {
       queryClient.invalidateQueries({ queryKey: ['space-messages', space.id] });
       queryClient.invalidateQueries({ queryKey: ['space-contents', space.id] });
       queryClient.invalidateQueries({ queryKey: ['spaces'] });
+      // A plain message can auto-generate a to-do list too (see spaces.service.ts's chat
+      // intent classifier) — refresh so a newly organized list shows up immediately.
+      queryClient.invalidateQueries({ queryKey: ['todo-tasks'] });
     },
     onError: () => notify.error('Could not send that. Please try again.'),
   });
@@ -134,17 +137,5 @@ export function useAttachToNewSpace() {
       queryClient.invalidateQueries({ queryKey: ['spaces', user?.id] });
     },
     onError: () => notify.error('Generated, but could not create a space for it. Please try again.'),
-  });
-}
-
-export function useCreateSpaceFromMessage() {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (content: string) => spacesService.createSpaceFromMessage(user!.id, content),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['spaces', user?.id] });
-    },
-    onError: () => notify.error('Could not start this space. Please try again.'),
   });
 }

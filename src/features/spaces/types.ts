@@ -4,4 +4,5 @@ export type ActiveView =
   | { type: 'mindmap'; id: string }
   | { type: 'flashcards'; id: string }
   | { type: 'document'; id: string }
-  | { type: 'videos' };
+  | { type: 'videos' }
+  | { type: 'todo' };

@@ -44,9 +44,12 @@ cp .env.example .env
 | --- | --- | --- |
 | `VITE_SUPABASE_URL` | Yes | Your Supabase project URL |
 | `VITE_SUPABASE_ANON_KEY` | Yes | Supabase anon/public API key (never the service role key) |
-| `VITE_YOUTUBE_API_KEY` | No | YouTube Data API v3 key. Omit to use the built-in demo video catalogue. |
-| `VITE_AI_PROVIDER` | No | Set to `gemini`. Google Gemini (`gemini-2.5-flash`, hardcoded) is the only real AI backend supported. |
-| `VITE_AI_API_KEY` | No | Gemini API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey). Omit to use the deterministic mock AI service. |
+| `VITE_YOUTUBE_API_KEY` | No | YouTube Data API v3 key. Omit to use the built-in demo video catalogue. Restrict it by HTTP referrer in the Google Cloud Console before shipping publicly — it ships to the browser bundle. |
+| `VITE_AI_ENABLED` | No | Set to `true` to use the real Gemini-backed AI service. Omit to use the deterministic mock AI service. This is a feature flag, not a secret — the Gemini API key itself is never a frontend env var. See [`docs/ai-workflow.md`](./docs/ai-workflow.md) for why, and the one-time Supabase Edge Function deploy this flag depends on. |
+
+There is no `VITE_AI_API_KEY` — the Gemini key lives server-side as a Supabase Edge Function
+secret (`GEMINI_API_KEY`, set via `supabase secrets set`), never in frontend env vars. See
+[`docs/ai-workflow.md`](./docs/ai-workflow.md).
 
 ## Supabase Setup
 
@@ -70,11 +73,21 @@ Optional: seed demo catalogue data (skills, interview questions) with
 ## Development Commands
 
 ```bash
-npm run dev        # start the dev server (http://localhost:5173)
+npm run dev         # start the dev server (http://localhost:5173)
 npm run lint         # run ESLint
 npm run build        # type-check and build for production
 npm run preview      # preview the production build locally
+npm test              # run the automated test suite once
+npm run test:watch     # run tests in watch mode
 ```
+
+## Testing
+
+Vitest + @testing-library/react. Unit tests for scheduling/layout logic, the chat-flow parsing
+helpers, and both AI service implementations (mock and Gemini, the latter with the network
+mocked — no live model calls run in the test suite); a couple of component tests. Runs
+automatically on every push/PR via GitHub Actions (`.github/workflows/ci.yml`). See
+[`docs/testing.md`](./docs/testing.md) for what's covered, what isn't yet, and why.
 
 ## Build Commands
 
@@ -96,20 +109,32 @@ in the hosting provider's project settings. Configure the host to rewrite all pa
 ```
 src/
   components/ui/    Reusable design-system primitives
+  components/        ErrorBoundary + other app-wide, non-feature components
   layouts/           Public / Auth / App page shells
   routes/            Router configuration + route guards
   pages/             Route-level components
   features/          One folder per product area (dashboard, roadmaps, mindmaps, flashcards,
-                     documents, youtube, career, analytics, search, auth, settings)
+                     documents, youtube, career, analytics, search, auth, settings, spaces)
   services/           Supabase + external API access layer
+    ai.service.ts      barrel: AiService interface + getAiService()/isAiConfigured()
+    ai/                 mock.ts, gemini.ts, roadmap-templates.ts, types.ts
+    youtube.service.ts  barrel: YoutubeService interface + getYoutubeService()
+    youtube/             mock-catalogue.ts, data-api.ts, types.ts
   hooks/              Cross-feature reusable hooks
   contexts/           React Context providers (auth)
   lib/                Supabase client, query client, utilities, constants
   types/              Shared TypeScript types
   utils/              Pure helper functions
+  test/               Vitest setup (jsdom + testing-library wiring)
+  *.test.ts(x)        Co-located next to the module/component each one tests
 supabase/
   migrations/         SQL schema + RLS migrations
+  functions/           Edge Functions (ai-complete: server-side Gemini proxy)
   seed/               Optional seed data
+docs/
+  testing.md          Testing strategy and what's/isn't covered
+  ai-workflow.md       AI service architecture, mock/real parity, edge function deploy steps
+.github/workflows/    CI (lint + typecheck + build + test on every push/PR)
 CLAUDE.md             Engineering conventions this project follows
 ARCHITECTURE.md       Detailed architecture and data flow documentation
 ```

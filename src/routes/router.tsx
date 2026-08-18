@@ -13,10 +13,12 @@ import { ResetPasswordPage } from '@/pages/ResetPasswordPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
 const DashboardPage = lazy(() => import('@/pages/DashboardPage').then((m) => ({ default: m.DashboardPage })));
+const CalendarPage = lazy(() => import('@/pages/CalendarPage').then((m) => ({ default: m.CalendarPage })));
 const NewSpaceChatPage = lazy(() => import('@/pages/NewSpaceChatPage').then((m) => ({ default: m.NewSpaceChatPage })));
 const SpaceDetailPage = lazy(() => import('@/pages/SpaceDetailPage').then((m) => ({ default: m.SpaceDetailPage })));
 const MemoryPage = lazy(() => import('@/pages/MemoryPage').then((m) => ({ default: m.MemoryPage })));
 const CareerPage = lazy(() => import('@/pages/CareerPage').then((m) => ({ default: m.CareerPage })));
+const TaskListPage = lazy(() => import('@/pages/TaskListPage').then((m) => ({ default: m.TaskListPage })));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 function PageFallback() {
@@ -51,10 +53,12 @@ export const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Lazy><DashboardPage /></Lazy> },
+      { path: 'calendar', element: <Lazy><CalendarPage /></Lazy> },
       { path: 'spaces', element: <Lazy><NewSpaceChatPage /></Lazy> },
       { path: 'spaces/:spaceId', element: <Lazy><SpaceDetailPage /></Lazy> },
       { path: 'memory', element: <Lazy><MemoryPage /></Lazy> },
       { path: 'career', element: <Lazy><CareerPage /></Lazy> },
+      { path: 'tasks', element: <Lazy><TaskListPage /></Lazy> },
       { path: 'settings', element: <Lazy><SettingsPage /></Lazy> },
     ],
   },

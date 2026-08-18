@@ -336,7 +336,7 @@ export interface Space {
 }
 
 export type SpaceMessageRole = 'user' | 'assistant';
-export type SpaceArtifactType = 'roadmap' | 'mindmap' | 'flashcards' | 'document';
+export type SpaceArtifactType = 'roadmap' | 'mindmap' | 'flashcards' | 'document' | 'todo';
 
 export interface SpaceMessageMetadata {
   artifactType?: SpaceArtifactType;
@@ -359,4 +359,19 @@ export interface SpaceContents {
   flashcardDecks: FlashcardDeck[];
   documents: Document[];
   careerProfile: CareerProfile | null;
+}
+
+export type TaskPriority = 'high' | 'medium' | 'low';
+
+export interface TodoTask {
+  id: UUID;
+  user_id: UUID;
+  space_id: UUID;
+  title: string;
+  priority: TaskPriority;
+  due_date: string | null;
+  is_completed: boolean;
+  completed_at: ISODateString | null;
+  created_at: ISODateString;
+  updated_at: ISODateString;
 }

@@ -2,10 +2,12 @@
 
 ## 1. High-Level Architecture
 
-Ascend is a single-page application with **no custom backend server**. It talks
-directly to Supabase (Postgres + Auth + Storage) from the browser, protected by Row Level
-Security. AI-dependent and third-party-API-dependent features are isolated behind a service
-layer so they can run on mock data today and a real API tomorrow without touching UI code.
+Ascend is a single-page application with **no custom backend server** — the one exception is a
+single, narrow Supabase Edge Function (`ai-complete`) that exists purely to keep the Gemini API
+key off the client; it holds no business logic of its own. Everything else talks directly to
+Supabase (Postgres + Auth + Storage) from the browser, protected by Row Level Security.
+AI-dependent and third-party-API-dependent features are isolated behind a service layer so they
+can run on mock data today and a real API tomorrow without touching UI code.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -24,12 +26,20 @@ layer so they can run on mock data today and a real API tomorrow without touchin
 └─────────────┬───────────────┴───────────────┬───────────────────┘
               │                                │
               ▼                                ▼
-   ┌────────────────────┐          ┌───────────────────────────┐
-   │ Supabase             │          │ External APIs (optional)    │
-   │  - Postgres + RLS     │          │  - AI provider (documents,   │
-   │  - Auth               │          │    roadmap generation)       │
-   │  - Storage (PDFs)     │          │  - YouTube Data API           │
-   └────────────────────┘          └───────────────────────────┘
+   ┌─────────────────────────┐      ┌───────────────────────────┐
+   │ Supabase                  │      │ YouTube Data API (optional) │
+   │  - Postgres + RLS          │      │  called directly — public    │
+   │  - Auth                    │      │  read API, key restricted     │
+   │  - Storage (PDFs)          │      │  by HTTP referrer              │
+   │  - Edge Fn: ai-complete ───┼─┐    └───────────────────────────┘
+   └─────────────────────────┘ │
+                                ▼
+                     ┌────────────────────────┐
+                     │ Google Gemini API          │
+                     │  (gemini-2.5-flash)          │
+                     │  key held server-side only,   │
+                     │  never sent to the browser      │
+                     └────────────────────────┘
 ```
 
 ## 2. Frontend Architecture
@@ -135,7 +145,17 @@ Design choices:
 
 ## 7. AI Service Architecture
 
-`src/services/ai.service.ts` defines the contract every AI-dependent feature depends on:
+`src/services/ai.service.ts` is a barrel re-exporting the contract every AI-dependent feature
+depends on, plus `getAiService()`/`isAiConfigured()`. The implementation is split across
+`src/services/ai/`:
+
+```
+ai.service.ts          barrel — AiService type re-exports, getAiService(), isAiConfigured()
+ai/types.ts             the AiService interface + every request/response shape
+ai/mock.ts               mockAiService
+ai/gemini.ts             GeminiService
+ai/roadmap-templates.ts  hand-written templates mockAiService.generateRoadmap draws from
+```
 
 ```ts
 interface AiService {
@@ -147,19 +167,25 @@ interface AiService {
   generateQa(text: string): Promise<QaPair[]>
   generateQuiz(text: string): Promise<QuizQuestion[]>
   generateFlashcards(text: string, count: number): Promise<FlashcardDraft[]>
+  // ...generateFlashcardsForTopic, analyzeResume, generateInterviewQuestions,
+  // generateSkillImprovementPlan, chatReply, interpretChatIntent
 }
 ```
 
 - `mockAiService` implements this deterministically from the input text/topic (heuristic
-  templates, not random Lorem Ipsum) so the product demos coherently offline.
-- `GeminiService` is the sole real implementation, calling Google's Gemini API
-  (`generativelanguage.googleapis.com`) hardcoded to the **gemini-2.5-flash** model — no other
-  provider or model is wired in. Structured outputs (roadmaps, key points, Q&A, quiz, flashcards,
+  templates, not random Lorem Ipsum) so the product demos coherently offline, with zero
+  configuration required.
+- `GeminiService` is the sole real implementation, targeting the **gemini-2.5-flash** model — no
+  other provider or model is wired in. It never calls `generativelanguage.googleapis.com`
+  directly from the browser; every call goes through the `ai-complete` Supabase Edge Function
+  (`supabase/functions/ai-complete`), which holds the Gemini API key server-side. See §10 and
+  `docs/ai-workflow.md` for why. Structured outputs (roadmaps, key points, Q&A, quiz, flashcards,
   mind map trees) request `responseMimeType: "application/json"` from Gemini and are parsed
   directly into the corresponding TypeScript shape.
-- `getAiService()` returns `mockAiService` unless `VITE_AI_API_KEY` is set, in which case it
-  always returns `GeminiService`. Components only ever call `getAiService()`, never a concrete
-  implementation.
+- `getAiService()` returns `mockAiService` unless `VITE_AI_ENABLED=true`, in which case it
+  returns `GeminiService`. `VITE_AI_ENABLED` is a plain feature flag, not a secret — it only
+  decides which implementation runs; the actual Gemini key never reaches the client. Components
+  only ever call `getAiService()`, never a concrete implementation.
 - `RoadmapOptions` (`level`, `deadline`) let the roadmap-generation UI ask the learner two
   clarifying questions — current skill level and an optional target date — before generating,
   which the prompt uses to size `difficulty` and `estimatedDurationWeeks`.
@@ -168,10 +194,16 @@ interface AiService {
 - `generateMindMapTree` powers "Generate with AI" on mind map creation: a topic is expanded into
   a nested branch structure, then walked recursively to create `mind_map_nodes` rows with an
   auto-computed layout.
+- Both implementations are covered by automated tests (`src/services/ai/mock.test.ts`,
+  `src/services/ai/gemini.test.ts`) that hold them to the same contract without any live network
+  or model call — see `docs/testing.md`.
 
 ## 8. YouTube Recommendation Service
 
-`src/services/youtube.service.ts` mirrors the same pattern:
+`src/services/youtube.service.ts` mirrors the same barrel + split-implementation pattern as the
+AI service: the barrel re-exports the interface and `getYoutubeService()`, while
+`src/services/youtube/mock-catalogue.ts` (`mockYoutubeService`) and
+`src/services/youtube/data-api.ts` (`YoutubeDataApiService`) hold the two implementations.
 
 ```ts
 interface YoutubeService {
@@ -181,8 +213,11 @@ interface YoutubeService {
 
 - `mockYoutubeService` returns a curated, hand-written catalogue of real, well-known educational
   videos/channels filtered by topic/difficulty keywords — never randomly invented titles/stats.
-- `realYoutubeService` calls the YouTube Data API v3 `search` + `videos` endpoints when
-  `VITE_YOUTUBE_API_KEY` is configured, mapped into the same `YoutubeVideo` shape.
+- `YoutubeDataApiService` calls the YouTube Data API v3 `search` + `videos` endpoints directly
+  from the browser when `VITE_YOUTUBE_API_KEY` is configured, mapped into the same `YoutubeVideo`
+  shape. Unlike the Gemini key, this one is *not* proxied through an Edge Function — the Data API
+  is designed for client-side use, and the key should instead be restricted by HTTP referrer in
+  the Google Cloud Console (see `docs/ai-workflow.md` for the full reasoning).
 - The UI (`features/youtube`) renders a small "Demo data" badge when the mock service is active,
   so it's never ambiguous whether recommendations are live.
 
@@ -204,12 +239,21 @@ Component → useXyzQuery() hook (TanStack Query)
   convenience, not the guarantee.
 - **No service-role key in the frontend.** Only the anon key ships to the browser; it can do
   nothing RLS doesn't allow.
+- **No billed API key in the frontend either.** The Gemini API key is a server-side secret on the
+  `ai-complete` Edge Function, never a `VITE_*` variable — see §7 and `docs/ai-workflow.md`. Every
+  `VITE_*`-prefixed variable is baked into the built client JS by Vite and is trivially readable
+  by anyone inspecting the bundle or the Network tab; that's an acceptable place for a public,
+  RLS-constrained anon key, but not for a billed, per-token AI provider key.
 - **Storage policies** mirror table RLS: a user can only read/write objects under their own
   `{user_id}/` prefix.
 - **Env vars** for every credential (`.env`, gitignored); `.env.example` documents the required
   shape with placeholder values only.
 - **Global catalogues** (`skills`, `interview_questions`, `youtube_resources`) are readable by any
   authenticated user but writable by none from the client (managed via migrations/seed only).
+- **No client-side React error boundary gap.** `ErrorBoundary` (`src/components/ErrorBoundary.tsx`)
+  wraps the whole app in `App.tsx` so an unhandled render error shows a readable fallback instead
+  of leaving a blank white screen — not a security control per se, but part of the same "fail
+  predictably" posture as the rest of this section.
 
 ## 11. Folder Structure
 
@@ -232,11 +276,6 @@ See `CLAUDE.md` §4 for the authoritative, enforced structure.
 
 ## 13. Future Scalability Considerations
 
-- **AI calls from an edge function**: today `realYoutubeService`/`realAiService` would call
-  third-party APIs directly from the browser if keys were provided client-side, which is fine for
-  YouTube (a public read API) but not ideal for a paid AI provider key. The service-layer
-  abstraction means swapping the real implementation to call a Supabase Edge Function (holding
-  the secret key server-side) instead is a one-file change with zero UI impact.
 - **Document chunking/embeddings**: `document_chunks` is already modeled so a future retrieval-
   augmented "ask questions about this document" feature can add a `vector` column (pgvector)
   without a schema redesign.
@@ -245,3 +284,7 @@ See `CLAUDE.md` §4 for the authoritative, enforced structure.
   asynchronously without changing the read path.
 - **Pagination**: list queries are written with `.range()` from day one so large datasets
   (many flashcards, many documents) don't require a later rewrite.
+- **RLS integration tests + E2E coverage**: the automated test suite (`docs/testing.md`) covers
+  pure logic and the AI service contract today; a suite running against a local Supabase instance
+  to verify RLS actually blocks cross-user access, plus Playwright coverage of the critical
+  sign-up → generate → delete flows, are the natural next additions.
