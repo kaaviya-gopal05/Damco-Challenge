@@ -99,6 +99,10 @@ async function processDocumentInBackground(document: Document, file: File): Prom
       chunks.map((content, index) => ({ document_id: document.id, chunk_index: index, content }))
     );
     if (chunksError) throw chunksError;
+    // Fire-and-forget: embedding failures shouldn't block the document from finishing upload —
+    // "Ask Your Documents" just won't be able to find this one yet. A future ask can be retried
+    // through document-embed since it only ever processes chunks with a still-null embedding.
+    supabase.functions.invoke('document-embed', { body: { documentId: document.id } }).catch(() => {});
   }
 
   const ai = getAiService();

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ChevronDown, CheckCircle2, HelpCircle, Sparkles, RotateCcw } from 'lucide-react';
 import { Badge, Button, Card, CardContent, Tabs, TabList, Tab, TabPanel } from '@/components/ui';
+import { AiMarkdown } from '@/components/markdown/AiMarkdown';
 import { INTERVIEW_CATEGORIES } from '@/lib/constants';
 import { cn } from '@/lib/utils';
 import { useGenerateInterviewQuestions, useUpdateQuestionStatus } from '@/features/career/hooks/useCareer';
@@ -44,7 +45,7 @@ function QuestionList({
             </button>
             {isExpanded && (
               <div className="border-t border-ink-100 px-4 py-3">
-                <p className="text-sm text-ink-600">{q.sampleAnswer}</p>
+                <AiMarkdown content={q.sampleAnswer} />
                 <div className="mt-3 flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => onUpdateStatus(q.id, 'practiced')}>
                     Mark practiced

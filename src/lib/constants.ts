@@ -32,5 +32,7 @@ export const NAV_ITEMS = [
   { to: '/app/spaces', label: 'Spaces', icon: 'MessageSquare' },
   { to: '/app/career', label: 'Career Intelligence', icon: 'Briefcase' },
   { to: '/app/tasks', label: 'Task List', icon: 'ListChecks' },
+  { to: '/app/email', label: 'Email', icon: 'Mail' },
+  { to: '/app/ask-docs', label: 'Ask Docs', icon: 'FileSearch' },
   { to: '/app/memory', label: 'Memory', icon: 'Archive' },
 ] as const;

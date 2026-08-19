@@ -31,6 +31,25 @@ Outside of Spaces, there's a Dashboard (streaks, study hours, weekly activity),
 a Career Intelligence section (upload a resume, get a skill-gap analysis and
 interview practice questions for a target role), authentication, and settings.
 
+There's also a small automated layer on top of all of this: Email Monitoring,
+which (with the learner's permission, via Gmail OAuth) reads their inbox and
+turns anything actually actionable — an interview that got scheduled, an
+exam date, a deadline — into a task, without the learner having to manually
+enter it. Everything else in the inbox (newsletters, receipts, marketing) is
+read, classified as irrelevant, and never shown — explained in full in
+section 9 below.
+
+Two more autonomous/AI-heavy features round this out:
+  - Weekly Plan: one click deterministically rebalances the learner's overdue
+    and this-week to-do tasks across the next 7 days (max 3 a day, real
+    database writes, not just a suggestion), then Gemini writes a short,
+    specific recap of the resulting week.
+  - Ask Your Documents: real retrieval-augmented generation (RAG) over every
+    PDF the learner has ever uploaded — pgvector similarity search finds the
+    most relevant passages across all their documents, and Gemini answers
+    using only those passages, with numbered citations back to source.
+Both are covered in full in section 9.
+
 Nothing on the site is faked to look finished. If no AI key is configured, AI
 features fall back to a clearly-labeled "demo" mode that still works end to
 end using deterministic logic — so the product always demos honestly, and
@@ -53,6 +72,13 @@ FRONTEND
   - Recharts — dashboard charts
   - react-markdown + remark-gfm + remark-math + rehype-katex — renders AI
     output as formatted markdown, including math formulas (KaTeX) and diagrams
+  - @tailwindcss/typography — real heading/paragraph/list hierarchy for that
+    markdown (headings actually look like headings, lists actually indent) —
+    registered via Tailwind v4's CSS-first `@plugin` directive, no JS config
+  - react-syntax-highlighter — real syntax-highlighted, copy-to-clipboard code
+    blocks for any fenced code the AI returns (study notes, coding interview
+    answers) — every AI-markdown surface in the app shares one component
+    (AiMarkdown) so this looks and behaves identically everywhere
   - mermaid — renders flowchart/sequence diagrams that the AI sometimes
     includes in study notes
   - date-fns — all date math (roadmap scheduling, calendar grid, task due dates)
@@ -65,14 +91,23 @@ FRONTEND
 BACKEND / DATA
   - Supabase — this is the entire backend. No custom Node/Express server exists.
       - Postgres — the database
+      - pgvector (Postgres extension) — stores a 768-dimension embedding
+        per PDF chunk and powers the cosine-similarity search behind Ask
+        Your Documents (section 9 below)
       - Supabase Auth — email/password authentication, session management
       - Supabase Storage — stores uploaded PDF files, private per user
       - Row Level Security (RLS) — Postgres-level rules so a user can only
         ever read/write their OWN rows, enforced by the database itself, not
         just by the app's UI (explained more in the Security section below)
-      - Supabase Edge Functions — one small serverless function (Deno
-        runtime) that proxies AI requests so a paid API key never reaches
-        the browser (explained more below)
+      - Supabase Edge Functions — small serverless functions (Deno runtime):
+        `ai-complete` proxies general AI requests so a paid API key never
+        reaches the browser (explained more below); `classify-emails`,
+        `gmail-oauth-callback`, `gmail-fetch-messages`, and `agent-cron-check`
+        power Email Monitoring; `document-embed` and `document-ask` power Ask
+        Your Documents — all explained in section 9.
+  - Gmail API (OAuth 2.0, read-only scope) — Email Monitoring's data source,
+    opted into per learner via a standard Google OAuth consent flow, never
+    scraped or accessed without explicit permission.
 
 AI
   - Google Gemini (model: gemini-2.5-flash) — the only real AI provider wired
@@ -112,9 +147,21 @@ for almost everything.
      |
      |--- talks directly to ---> YouTube Data API (only for public video search)
      |
-     '--- talks to ---> a small Supabase Edge Function ---> Google Gemini API
-                         (this one extra hop exists ONLY to keep the paid
-                          Gemini key off the browser — see Security section)
+     |--- talks to ---> ai-complete Edge Function ---> Google Gemini API
+     |                   (this one extra hop exists ONLY to keep the paid
+     |                    Gemini key off the browser — see Security section)
+     |
+     '--- talks to ---> gmail-oauth-callback / gmail-fetch-messages
+                         Edge Functions ---> Gmail API
+                         (same reasoning: the Gmail OAuth client secret and
+                          the encrypted access/refresh tokens never touch
+                          the browser — see section 9 and Security section)
+
+  A fifth Edge Function, agent-cron-check, isn't reachable from the browser at
+  all — it's meant to be triggered on a schedule (Supabase's own Scheduled
+  Triggers, or any external cron) and scans every connected learner's inbox
+  using the Postgres service-role key, which is why it's gated by a separate
+  shared secret instead of a user login.
 
 Inside the React app, the code is organized in layers, each with one job:
 
@@ -244,6 +291,41 @@ CALENDAR (new)
 TASK LIST PAGE (new)
   Every to-do task from every Space, in one place, grouped and filterable by
   priority (All/High/Medium/Low), each showing which Space it came from.
+
+EMAIL (new)
+  A dedicated page that shows only what Email Monitoring has decided is
+  actually actionable in the learner's inbox — a scheduled interview, an
+  exam date, a deadline, a meeting invite — filtered down from everything
+  else (newsletters, receipts, marketing, notifications), which is
+  deliberately never shown. Clicking "Scan Inbox" pulls the 50 most recent
+  emails and classifies all of them (in parallel, a handful at a time, so a
+  full scan takes seconds rather than minutes). Each actionable email shows
+  a priority badge; clicking it opens a modal with an AI-generated summary of
+  what the email is actually about (never the raw body text). Each one can be
+  turned into a real to-do task with one click ("Add to Task List"), or all
+  of them at once ("Organize into Tasks") — converted tasks get a due date
+  spread out by urgency (today for high, +2 days for medium, +5 days for low,
+  so the Calendar doesn't get slammed with everything landing on the same
+  day) and then show up normally in both the Task List and the Calendar,
+  since those are just regular to-do tasks under the hood. Full technical
+  explanation in section 9 below.
+
+WEEKLY PLAN (new, on the Dashboard)
+  One click ("Generate This Week's Plan") deterministically spreads the
+  learner's overdue and this-week to-do tasks across the next 7 days (max 3
+  a day) and actually updates their due dates in the database — a real
+  action, not just a suggestion — then Gemini writes a short, specific recap
+  of the resulting week plus a suggested daily rhythm. Shows a 7-day grid of
+  what's due when, distinguishing rescheduled to-do tasks from read-only
+  roadmap context. Full technical explanation in section 10 below.
+
+ASK YOUR DOCUMENTS (new)
+  A dedicated page (retrieval-augmented generation, i.e. real RAG — not a
+  buzzword here) where a learner asks a question in plain English and gets
+  an answer grounded in every PDF they've ever uploaded, across all of them
+  at once or scoped to just one, with numbered citations back to the exact
+  source document for each part of the answer. Full technical explanation
+  in section 11 below.
 
 GLOBAL SEARCH
   Cmd/Ctrl+K opens a command palette that searches across roadmaps, tasks,
@@ -397,6 +479,47 @@ Here is what happens, feature by feature:
     date math, no AI call at all, so the feature is fully explorable even
     without any API key configured.
 
+11. EMAIL ACTIONABILITY CLASSIFICATION (new — the Email Monitoring feature)
+    Input: one email's sender, subject, and body (truncated to 5000
+    characters so an unusually long email can't blow out the prompt). The
+    prompt explicitly frames the question as "does the recipient need to DO
+    or PREPARE something because of this" rather than "is this interesting"
+    — deliberately strict, since most of a real inbox is noise, not tasks —
+    and asks Gemini to return a learning goal (or an empty string if it's not
+    actionable), an urgency level, a one-sentence reason, and a confidence
+    score. Only emails scoring confidence > 0.7 AND returning a non-empty
+    goal are ever surfaced to the learner; everything else — including a
+    genuinely-processed "this isn't actionable" verdict — is stored (so it's
+    never re-classified on the next scan) but never shown. Full technical
+    explanation, including how the response is validated before being
+    trusted, is in section 9 below, alongside how Gmail access is secured.
+
+12. EMAIL SUMMARY (new — clicking an email on the Email page)
+    Input: the same stored email body used for classification above. Reuses
+    the exact same summarizeDocument prompt that already powers PDF
+    Intelligence's document summaries (see item 4) — no new AI capability had
+    to be built, since "summarize this body of text" is the same job either
+    way. The raw email body is never shown to the learner directly; only the
+    generated summary is, inside a modal, alongside the subject and priority.
+
+13. WEEKLY PLAN SUMMARY (new — see section 10 for the full feature)
+    Input: the finished, already-scheduled 7-day task list (never asked to
+    invent the schedule itself — that part is deterministic TypeScript, not
+    AI). The prompt asks for a short recap specific to the actual numbers
+    (task count, anything time-sensitive) and a one-line suggested daily
+    rhythm. Implemented as one more method on the shared AiService interface
+    (mock + Gemini), so it rides on the existing ai-complete Edge Function
+    with zero new backend surface for this half of the feature.
+
+14. RAG ANSWER GENERATION (new — see section 11 for the full feature)
+    Input: the learner's question plus up to 6 numbered excerpts retrieved by
+    pgvector similarity search across their own PDF chunks. The prompt
+    explicitly restricts Gemini to answering ONLY from those excerpts, citing
+    inline like [1], and instructs it to say plainly when they don't contain
+    the answer rather than reach for outside knowledge — the same "don't
+    fabricate" discipline as the resume analysis prompt (see item 5), applied
+    to retrieved context instead of a single document.
+
 VOICE INPUT
   Not an AI feature by itself — it uses the browser's native Web Speech API
   (SpeechRecognition) to convert speech to text live, in the browser, with no
@@ -468,18 +591,218 @@ recommended to be restricted by HTTP referrer in the Google Cloud Console.
     none of these tests make a real, billed API call.
   - A couple of component tests proving the React Testing Library setup
     renders and interacts correctly.
+  - Email Monitoring: error classification and exponential-backoff retry
+    logic, and the email service layer — including a FunctionsHttpError case,
+    since supabase-js's edge-function error object only carries a generic
+    message by default, and the real error text has to be unwrapped from the
+    response body, which is exactly what's under test.
 A GitHub Actions CI pipeline runs lint, TypeScript type-checking, the full
 test suite, and a production build automatically on every push and pull
 request.
 
 
 --------------------------------------------------------------------------------
-8. CONCLUSION
+9. EMAIL MONITORING, IN FULL
+--------------------------------------------------------------------------------
+
+WHAT IT DOES
+  With the learner's explicit permission (Gmail OAuth, read-only), the app
+  can read their inbox and turn anything genuinely actionable — a scheduled
+  interview, an exam date, a deadline, a meeting invite — into a real to-do
+  task, without the learner re-typing it by hand. Everything else in a real
+  inbox (newsletters, receipts, marketing, automated notifications) is read,
+  classified as not actionable, and never shown — a real inbox is mostly
+  noise, so showing nothing until something is confirmed worth attention is
+  the deliberate default, not a missing feature.
+
+HOW SCANNING AND CLASSIFICATION WORK TOGETHER
+  Clicking "Scan Inbox" (Email page or Settings) does two things back to
+  back: gmail-fetch-messages pulls the 50 most recent Gmail messages and
+  stores any not already seen; classify-emails then reads every
+  not-yet-classified row and, per email, asks Gemini whether the recipient
+  needs to DO or PREPARE something because of it, returning a learning goal
+  (or an empty string), an urgency level, and a confidence score. Only
+  results scoring confidence > 0.7 with a non-empty goal ever surface to the
+  learner. Classification runs up to 8 emails concurrently (a small bounded
+  worker-pool, not a queue or job system) — the difference between a full
+  50-email scan taking roughly two minutes one-call-at-a-time versus a few
+  seconds.
+
+TRUSTING (OR NOT TRUSTING) WHAT THE MODEL RETURNS
+  Gemini's JSON output isn't taken on faith. Before anything from a response
+  is used, it's regex-extracted into a clean JSON span (in case the model
+  wrapped its answer in a sentence of prose despite being told not to) and
+  validated against a zod schema; a response that doesn't pass is retried
+  once with a fresh model call, and if it still doesn't validate, a plain
+  hand-written fallback takes over instead of an AI response that might be
+  malformed or fabricated. This applies to every Gemini call this feature
+  makes, including the email-summary modal described below.
+
+THE EMAIL PAGE
+  Each actionable email shows a priority badge (high/medium/low, the same
+  colors as the to-do list) and can be turned into a real to-do task with one
+  click ("Add to Task List"), or all of them at once ("Organize into Tasks").
+  Converted tasks get a due date offset by urgency (today / +2 days / +5
+  days) rather than all landing on today, which is what makes them show up
+  spread out sensibly on the Calendar instead of piling onto one day — the
+  same to-do rows already power the Task List and Calendar, so nothing extra
+  had to be built for that part. Clicking an email (rather than one of its
+  action buttons) opens a modal with an AI-generated summary of what it's
+  actually about — reusing the exact same summarizeDocument prompt PDF
+  Intelligence already uses for document summaries — never the raw body text.
+
+CONNECTING GMAIL, AND HOW IT'S KEPT SAFE (the same security discipline as
+the Gemini key, applied to a much more sensitive credential)
+  A learner opts in explicitly via Google's standard OAuth consent screen
+  (Settings -> Connect Gmail), granting only the read-only gmail.readonly
+  scope — this app can read mail, never send, delete, or modify it. The
+  resulting access and refresh tokens are never stored in plain text: the
+  gmail-oauth-callback Edge Function encrypts each one independently with
+  AES-GCM (a fresh random IV per token, since reusing an IV under the same
+  key is an AES-GCM correctness bug, not just a style nitpick) using a
+  server-only secret before writing to Postgres — gmail_oauth_tokens only
+  ever holds ciphertext. Row Level Security still restricts every row to its
+  owner on top of that, as defense in depth. The one exception to the usual
+  "forward the caller's own login" pattern is agent-cron-check, an optional
+  scheduled function that can scan every connected learner's inbox on a
+  timer with nobody logged in to forward a session from — it uses the
+  Postgres service-role key instead (the one key in this whole project
+  that's allowed to bypass Row Level Security) and is gated by its own
+  separate shared secret header, since that function itself is the trust
+  boundary rather than a user's session.
+
+
+--------------------------------------------------------------------------------
+10. WEEKLY PLAN, IN FULL (a real autonomous feature, not just an AI reply)
+--------------------------------------------------------------------------------
+
+WHY THIS ONE COUNTS AS "AUTONOMOUS" AND NOT JUST "AI-POWERED"
+  Most "AI features" in this app answer a question or generate content on
+  request — genuinely useful, but the learner is always the one deciding what
+  happens. Weekly Plan is different: clicking "Generate This Week's Plan"
+  actually reaches into the database and moves things. It's the one place in
+  the app where an action, not just an answer, happens on the learner's
+  behalf — which is why it's the closer answer to "what's your autonomous
+  agent" than the multi-agent system that got built and then removed earlier
+  in this project's history (see git log around that decision if it ever
+  comes up — the honest short version: five hand-rolled agent nodes were
+  built, but only one of them was ever reachable from any real UI, so it was
+  cut in favor of this, a smaller feature that's 100% real end to end).
+
+WHAT ACTUALLY HAPPENS, IN ORDER
+  1. Every incomplete to-do task that's either overdue or due within the next
+     7 days is collected and sorted (highest priority first, then soonest
+     due date first) — src/services/weeklyPlan.service.ts.
+  2. Each one is greedily assigned to a day in the next 7, preferring its own
+     due date if that day isn't already at capacity (3 tasks), otherwise the
+     next open day, so nothing is invented — a task keeps its date unless
+     keeping it would cause a pile-up. This is deterministic, ordinary
+     TypeScript — no AI is involved in deciding the schedule itself, which is
+     exactly why it's safe to let it actually write to the database instead
+     of just suggesting something.
+  3. Any task whose day changed gets its due_date updated for real in
+     Postgres — this is the autonomous part. The count of how many moved is
+     recorded and shown to the learner, never hidden.
+  4. Read-only context is added: any active roadmap's tasks whose already-
+     existing computed schedule (see section 5, roadmap scheduling) falls in
+     the next 7 days are included for the AI to reference, but never moved —
+     roadmap task dates are computed on the fly from hours/day, not stored
+     per-row, so there's nothing to safely reschedule there anyway.
+  5. Only now does Gemini get involved — given the finished, real schedule
+     (never asked to invent one), it writes a short specific recap ("you have
+     23 tasks this week...") and a one-line suggested daily rhythm. If Gemini
+     is unavailable, the mock service returns an honest demo-labeled version
+     of the same two fields — the schedule itself already happened either way.
+  6. The result is saved to a new weekly_plans table and shown on the
+     Dashboard: the recap, the rhythm tip, and a 7-day grid of what's due
+     when, with roadmap-vs-to-do items visually distinguished.
+
+WHY THE AI CALL REUSES ai-complete INSTEAD OF A NEW EDGE FUNCTION
+  generateWeeklyPlanSummary is just one more method on the same AiService
+  interface every other AI feature in this app already implements (mock +
+  Gemini), so it automatically inherits the existing ai-complete Edge
+  Function, the existing key-security model, and the existing offline-demo
+  behavior — zero new backend surface for the "write a recap" half of this
+  feature. Only the actual scheduling logic needed to be new code, and it
+  runs entirely in the existing browser-side service layer since it's just
+  ordinary Postgres reads/writes through Supabase, not something that needs
+  a paid API key hidden.
+
+
+--------------------------------------------------------------------------------
+11. ASK YOUR DOCUMENTS (RAG), IN FULL
+--------------------------------------------------------------------------------
+
+WHAT IT IS
+  A chat-style page (/app/ask-docs) where a learner asks a question in plain
+  English and gets an answer grounded in their own uploaded PDFs — not
+  Gemini's general knowledge, and not one document at a time like PDF
+  Intelligence's existing Q&A tab, but a real retrieval-augmented-generation
+  (RAG) search across every PDF they've ever uploaded, with citations back to
+  the specific document each part of the answer came from. This is the
+  standard "real AI engineering" demo (as opposed to "call an LLM and print
+  the response"), so it's worth being able to explain precisely.
+
+THE PIPELINE, STEP BY STEP
+  1. INGEST (unchanged): a PDF is uploaded, text extracted client-side via
+     PDF.js, split into ~2000-character chunks, and each chunk saved as its
+     own document_chunks row — this part already existed for PDF Intelligence.
+  2. EMBED (new): right after chunks are inserted, the frontend fires a
+     request to the document-embed Edge Function (fire-and-forget — a failure
+     here doesn't block the upload, it just means that document isn't
+     searchable yet and can be retried). That function calls Gemini's
+     embedding model for every not-yet-embedded chunk (up to 5 concurrently)
+     and writes the resulting vector into a new `embedding vector(768)`
+     column, added via a migration that also enables Postgres's pgvector
+     extension.
+  3. RETRIEVE (new, on each question): document-ask embeds the learner's
+     question with that same embedding model, then calls a Postgres function
+     (match_document_chunks) that orders every one of that learner's chunks
+     by cosine distance to the question's vector and returns the top 6 — a
+     plain sequential scan, deliberately not a specialized ivfflat/hnsw
+     index, since a single learner's personal document count is small enough
+     that the extra index complexity wouldn't pay for itself yet.
+  4. ANSWER (new): those 6 excerpts are numbered and inserted into a prompt
+     that explicitly instructs Gemini to answer ONLY from them, citing
+     inline like [1], and to say plainly when the excerpts don't actually
+     contain the answer rather than falling back on outside knowledge. The
+     response is validated (same regex-extract + zod-schema + retry pattern
+     used everywhere else — see section 9) before it's trusted.
+  5. CITE: the UI shows the answer via the same AiMarkdown component as
+     every other AI surface in the app (so a code block or formula in an
+     answer renders exactly like it does everywhere else), followed by a
+     badge per source document actually cited, not just retrieved — if
+     Gemini didn't use a candidate excerpt in its answer, its badge doesn't
+     show, so the citations reflect what was actually used, not just what
+     was searched.
+
+WHY THIS DOESN'T USE A VECTOR DATABASE PRODUCT
+  Postgres with the pgvector extension is already provisioned as part of
+  Supabase — reaching for Pinecone, Weaviate, or a similar dedicated vector
+  DB would have meant a second database, a second network hop, and a second
+  set of credentials to secure, for a workload (one learner's personal PDF
+  collection) nowhere near the scale where a specialized vector store
+  actually outperforms pgvector. Same judgment call as not using LangGraph
+  for the agent system (section 9) — reach for the heavier tool when the
+  problem's shape actually needs it, not by default.
+
+SECURITY: WHY A LEARNER CAN ONLY EVER SEARCH THEIR OWN DOCUMENTS
+  match_document_chunks is a plain SQL function (not SECURITY DEFINER), so
+  it executes with the same Row Level Security the caller's own session
+  already has — even though the function also explicitly filters by
+  p_user_id as defense in depth, RLS on document_chunks and documents alone
+  already makes it impossible for the query to see another learner's rows,
+  the same guarantee every other table in this app relies on.
+
+
+--------------------------------------------------------------------------------
+12. CONCLUSION
 --------------------------------------------------------------------------------
 
 Ascend is a full-stack, AI-integrated learning platform built as a single
-React SPA on top of Supabase, with no custom backend server except one small,
-security-motivated Edge Function. Its defining engineering decisions are:
+React SPA on top of Supabase, with no custom backend server except a handful
+of small, purpose-specific Edge Functions. Its defining engineering decisions
+are:
   - A strict service-layer boundary so every Supabase/AI call lives in one
     place, making the mock/real AI split (and any future backend swap)
     a change that never touches UI code.
@@ -488,12 +811,23 @@ security-motivated Edge Function. Its defining engineering decisions are:
     implementation is a disciplined set of structured-JSON prompts against
     Google Gemini, not a trained ML model.
   - Security treated as a first-class concern, not an afterthought: Row
-    Level Security on every table, and a billed API key moved server-side
-    behind an authenticated proxy function after recognizing the risk of
-    shipping it to the browser.
-  - A real automated test suite (100+ tests, CI-enforced) covering both the
-    deterministic logic and the AI service contracts, without ever depending
-    on a live, billed model call to pass.
+    Level Security on every table, a billed API key moved server-side behind
+    authenticated proxy functions, and Gmail OAuth tokens individually
+    AES-GCM encrypted at rest.
+  - AI output is never trusted blindly: every structured Gemini response is
+    regex-extracted, schema-validated, and retried before use, with a
+    hand-written fallback if it still doesn't hold up — and RAG answers are
+    explicitly restricted to only the retrieved context, instructed to admit
+    when that context doesn't contain the answer rather than guess.
+  - Reach for the heavier tool only when the problem's actual shape needs
+    it, not by default: pgvector (already provisioned via Supabase) instead
+    of a separate vector database for RAG; a hand-rolled state machine
+    instead of LangGraph for the email classification pipeline; a real,
+    autonomous, deterministic scheduler (Weekly Plan) doing the actual work,
+    with Gemini only writing the recap afterward — not the other way around.
+  - A real automated test suite (CI-enforced) covering deterministic logic
+    and AI service contracts, without ever depending on a live, billed model
+    call to pass.
 
 The result is a product that demonstrates the same engineering discipline
 whether or not it's connected to a real AI provider — which is exactly the

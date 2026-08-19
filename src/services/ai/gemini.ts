@@ -12,6 +12,8 @@ import type {
   SelectionExplanation,
   SkillImprovementPlan,
   TaskNotesContext,
+  WeeklyPlanSummary,
+  WeeklyPlanSummaryInput,
 } from '@/services/ai/types';
 
 // ---------------------------------------------------------------------------
@@ -81,12 +83,16 @@ export class GeminiService implements AiService {
         `"${phaseTitle}" phase of a learning roadmap for "${roadmapTitle}". ` +
         `${taskDescription ? `Additional context: ${taskDescription}.` : ''} ` +
         `Include a short explanation, the key concepts/terms to know, and 1-2 practical examples or tips. ` +
-        `Use markdown headings, bullet points, and tables where useful. ` +
-        `If the topic involves any mathematical formula, equation, or calculation, write it using LaTeX syntax ` +
-        `($inline$ or $$block$$). If the topic involves a process, algorithm, architecture, or set of relationships ` +
-        `that would be clearer as a diagram, include one using a fenced \`\`\`mermaid code block (flowchart or ` +
-        `sequence diagram syntax). Only include a formula or diagram when it genuinely helps understanding — do not ` +
-        `force one in. Keep the notes focused, around 250-450 words excluding any diagram code.`
+        `Structure the notes with a clear hierarchy: use a level-2 heading (##) for each major section, level-3 (###) ` +
+        `for subsections, short paragraphs, and bullet or numbered lists for anything list-like — never one long ` +
+        `unbroken paragraph. If the topic involves writing or reading actual code, include a real, runnable code ` +
+        `snippet in a fenced code block tagged with its language (e.g. \`\`\`python, \`\`\`javascript, \`\`\`sql) — ` +
+        `never describe code in prose when a snippet would be clearer. If the topic involves any mathematical ` +
+        `formula, equation, or calculation, write it using LaTeX syntax ($inline$ or $$block$$). If the topic ` +
+        `involves a process, algorithm, architecture, or set of relationships that would be clearer as a diagram, ` +
+        `include one using a fenced \`\`\`mermaid code block (flowchart or sequence diagram syntax). Only include a ` +
+        `code snippet, formula, or diagram when it genuinely helps understanding — do not force one in. Keep the ` +
+        `notes focused, around 250-450 words excluding any code or diagram blocks.`
     );
   }
 
@@ -159,8 +165,12 @@ export class GeminiService implements AiService {
       `Generate interview preparation questions for a candidate targeting the role "${role}".${gapsNote} ` +
         `Generate exactly 3 questions for each of these 6 categories: technical, behavioral, system_design, coding, ` +
         `resume, hr. "resume" category means questions about how to present/discuss their resume; "hr" means ` +
-        `logistics/culture-fit style questions. Each question needs a concise, accurate sample answer (2-4 sentences, ` +
-        `or a short code/algorithm sketch for coding questions). Return JSON matching exactly: ` +
+        `logistics/culture-fit style questions. Each sampleAnswer is markdown: 2-4 sentences for most categories, ` +
+        `formatted as short paragraphs and bullet points where that reads more clearly than one block of prose. For ` +
+        `"coding" questions specifically, sampleAnswer MUST include a real, working code solution inside a fenced ` +
+        `code block tagged with its language (e.g. \`\`\`python or \`\`\`javascript), plus 1-2 sentences explaining ` +
+        `the approach and its time/space complexity — never describe the code only in prose. Return JSON matching ` +
+        `exactly: ` +
         `[{ "category": "technical"|"behavioral"|"system_design"|"coding"|"resume"|"hr", "question": string, ` +
         `"sampleAnswer": string, "difficulty": "beginner"|"intermediate"|"advanced" }]. The "difficulty" field must be ` +
         `the exact lowercase string "beginner", "intermediate", or "advanced" — never "easy", "medium", "hard", or any ` +
@@ -235,9 +245,27 @@ export class GeminiService implements AiService {
         `relative time reference (e.g. "tonight", "next week", "one month after") into an absolute date based on ` +
         `today's date, and assign a priority based on urgency and how close the deadline is — a task due today or ` +
         `tonight is "high", a task with any other firm date is usually "medium", and a task with no time reference ` +
-        `at all is "low". Return JSON matching exactly: [{ "title": string (short, actionable, under 10 words), ` +
+        `at all is "low". Exception: career/academic tasks with real consequences if missed — interviews, project ` +
+        `reports, presentations, exams, assignments, resumes, proposals, certifications — must never be "low": use ` +
+        `"high" if they have any date, otherwise "medium". Return JSON matching exactly: [{ "title": string (short, actionable, under 10 words), ` +
         `"priority": "high"|"medium"|"low", "dueDate": string|null (YYYY-MM-DD, null if no time reference was given) }]. ` +
         `Order the array by priority (high first) then by dueDate (soonest first, nulls last).`
+    );
+  }
+
+  generateWeeklyPlanSummary({ focusItems, rescheduledCount }: WeeklyPlanSummaryInput) {
+    const itemLines =
+      focusItems.length > 0
+        ? focusItems.map((item) => `- ${item.day} (${item.source}${item.priority ? `, ${item.priority} priority` : ''}): ${item.title}`).join('\n')
+        : '(nothing scheduled this week)';
+    return this.completeJson<WeeklyPlanSummary>(
+      `A learner's tasks for the next 7 days have just been organized deterministically (not by you) into this ` +
+        `schedule:\n${itemLines}\n\n` +
+        `${rescheduledCount > 0 ? `${rescheduledCount} overdue or unscheduled task(s) were moved to a specific day this week to avoid pile-ups. ` : ''}` +
+        `Write a short, genuinely encouraging summary of this week as their coach — be specific to what's actually ` +
+        `on the list, not generic. Return JSON matching exactly: { "summary": string (2-4 sentences, mention the ` +
+        `total task count and call out anything time-sensitive), "dailyRhythm": string (1-2 sentences suggesting a ` +
+        `realistic daily study rhythm, e.g. tackle the hardest item earlier in the day) }.`
     );
   }
 }

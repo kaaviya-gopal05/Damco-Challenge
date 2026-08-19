@@ -1,9 +1,21 @@
-import { Map, Share2, Layers, FileText, PlayCircle, Briefcase, type LucideIcon } from 'lucide-react';
+import {
+  Map,
+  Share2,
+  Layers,
+  FileText,
+  PlayCircle,
+  Briefcase,
+  CalendarClock,
+  FileSearch,
+  MailCheck,
+  type LucideIcon,
+} from 'lucide-react';
 
 interface Feature {
   icon: LucideIcon;
   title: string;
   description: string;
+  badge?: string;
 }
 
 const FEATURES: Feature[] = [
@@ -12,6 +24,26 @@ const FEATURES: Feature[] = [
     title: 'Personalized Roadmaps',
     description:
       'Turn any goal into a structured plan of phases, topics, and tasks — with real progress tracking, not just a checklist.',
+  },
+  {
+    icon: CalendarClock,
+    title: 'Weekly Plan',
+    description:
+      'An autonomous agent rebalances your overdue and upcoming tasks across the week and writes a plain-English recap of what changed and why.',
+    badge: 'Agent',
+  },
+  {
+    icon: FileSearch,
+    title: 'Ask Your Documents',
+    description:
+      'Ask a question in plain English and get an answer grounded in your own uploaded PDFs, with citations pointing back to the exact source.',
+    badge: 'RAG',
+  },
+  {
+    icon: MailCheck,
+    title: 'Email Monitor',
+    description:
+      'Automatically scans your inbox every 30 minutes for interviews, exams, and deadlines, and surfaces the important ones first — nothing to click.',
   },
   {
     icon: Share2,
@@ -41,7 +73,7 @@ const FEATURES: Feature[] = [
     icon: Briefcase,
     title: 'Career Intelligence',
     description:
-      'See your skill gaps against your target role, practice real interview questions, and follow a career roadmap.',
+      'See your skill gaps against your target role, practice real interview questions — complete with runnable, copyable code snippets — and follow a career roadmap.',
   },
 ];
 
@@ -62,8 +94,13 @@ export function FeatureGrid() {
         {FEATURES.map((feature) => (
           <div
             key={feature.title}
-            className="rounded-2xl border border-ink-200/70 bg-white p-6 shadow-soft transition-shadow hover:shadow-card"
+            className="relative rounded-2xl border border-ink-200/70 bg-white p-6 shadow-soft transition-shadow hover:shadow-card"
           >
+            {feature.badge && (
+              <span className="absolute right-4 top-4 rounded-full bg-accent-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent-600">
+                {feature.badge}
+              </span>
+            )}
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600">
               <feature.icon className="h-5 w-5" />
             </div>

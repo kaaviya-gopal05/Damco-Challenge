@@ -19,7 +19,7 @@ src/services/ai/
 Every component/hook calls `getAiService()` and only ever talks to the `AiService` interface —
 never a concrete class — so which implementation is active is decided in exactly one place.
 
-There is no multi-step agent, tool-calling loop, or iterative retry/critique chain anywhere in
+There is no multi-step agent, tool-calling loop, or critique/self-correction chain anywhere in
 this app — each method is one prompt in, one parsed response out. **This is why the project does
 not use LangGraph or a similar graph-orchestration library**: that class of tool earns its keep
 when there's real branching, multi-agent handoff, or tool selection to orchestrate, none of which
@@ -28,6 +28,23 @@ exists here today. The one thing that could be mistaken for a "workflow" —
 before generating a roadmap — is a small explicit state machine over a `Record<FlowKind,
 FlowQuestion[]>` table, which is already the right amount of machinery for 3 flow kinds and at
 most 4 linear questions.
+
+The one place retry does happen is narrower than an agent loop: `callGeminiJsonValidated`
+(`supabase/functions/_shared/gemini.ts`, used by email classification and the RAG answer
+generator in `document-ask`) re-calls the model up to twice if the response fails a zod schema
+check, then falls back to a hand-written default rather than retrying forever — a safety net
+against a malformed response, not a critique/refinement loop that changes its own prompt.
+
+Two features layer a small amount of non-AI logic *around* a single-shot Gemini call rather than
+chaining multiple model calls together: **Weekly Plan** (`weeklyPlan.service.ts`) runs a
+deterministic TypeScript scheduler (`scheduleTasksAcrossWeek`) to decide *what* goes on which day
+— actually writing `due_date` back to Postgres — and only afterward asks Gemini to write a human
+summary of that already-decided schedule, so the one thing that could go stale or hallucinate
+(prose) never touches the one thing that has to be correct (dates). **Ask Your Documents**
+(`document-ask`) is retrieval-augmented generation: a pgvector similarity search
+(`match_document_chunks`) finds relevant chunks first, and Gemini is prompted to answer using only
+those excerpts, citing which ones it actually used — still one model call, just with retrieved
+context prepended instead of the model's own unguided recall.
 
 ## Mock vs. real: the parity rule
 

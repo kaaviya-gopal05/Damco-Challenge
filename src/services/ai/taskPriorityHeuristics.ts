@@ -37,6 +37,17 @@ function formatDate(date: Date): string {
   return format(date, 'yyyy-MM-dd');
 }
 
+// Career/academic tasks that carry real consequences if missed — these should never settle at
+// "low" priority just because no date was given; see isImportantTask below and its use in
+// tasks.service.ts (shared by both the mock heuristic and the real Gemini backend, so the floor
+// applies regardless of which is active).
+const IMPORTANT_TASK_PATTERN =
+  /\b(interview|project report|report|presentation|resume|cv|thesis|dissertation|exam|assignment|proposal|certification|portfolio|pitch deck)\b/i;
+
+export function isImportantTask(title: string): boolean {
+  return IMPORTANT_TASK_PATTERN.test(title);
+}
+
 const URGENT_PATTERN = /\b(tonight|today|this (morning|afternoon|evening)|asap|right away|\bnow\b)\b/i;
 const TOMORROW_PATTERN = /\btomorrow\b/i;
 const ISO_DATE_PATTERN = /\d{4}-\d{2}-\d{2}/;
@@ -115,7 +126,16 @@ export function draftTasksFromBrainDump(brainDump: string, referenceDateISO: str
 
   const drafts = splitClauses(brainDump).map((clause) => {
     const { dueDate, isUrgent } = resolveDueDate(clause, referenceDate);
-    const priority: TaskPriority = isUrgent ? 'high' : dueDate ? 'medium' : 'low';
+    const important = isImportantTask(clause);
+    const priority: TaskPriority = isUrgent
+      ? 'high'
+      : important
+        ? dueDate
+          ? 'high'
+          : 'medium'
+        : dueDate
+          ? 'medium'
+          : 'low';
     return { title: toTitle(clause), priority, dueDate };
   });
 

@@ -3,13 +3,14 @@ import { getAiService } from '@/services/ai.service';
 import { generateAndCreateRoadmap } from '@/services/roadmaps.service';
 import { createMindMapFromAiTopic } from '@/services/mindmaps.service';
 import { createDeckWithGeneratedCards } from '@/services/flashcards.service';
-import { generateAndCreateTasks } from '@/services/tasks.service';
+import { createTaskWithDate, generateAndCreateTasks } from '@/services/tasks.service';
 import type {
   CareerProfile,
   Difficulty,
   Document,
   FlashcardDeck,
   MindMap,
+  PendingDateTask,
   Roadmap,
   Space,
   SpaceContents,
@@ -137,20 +138,57 @@ export async function addMessage(
   return data as SpaceMessage;
 }
 
+/** Phrases the next "what date is this for?" question, or wraps up with the usual summary once
+ *  every important undated task from this brain-dump has been asked about. */
+function taskDateQuestionReply(
+  createdSoFar: number,
+  next: PendingDateTask,
+  remaining: PendingDateTask[]
+): { content: string; metadata: SpaceMessageMetadata } {
+  const soFar = createdSoFar > 0 ? `I've organized ${createdSoFar} task${createdSoFar === 1 ? '' : 's'} so far. ` : '';
+  return {
+    content: `${soFar}What date is "${next.title}" for? Reply with a date like 2026-12-01, or say "no date" to leave it flexible.`,
+    metadata: { awaitingTaskDate: { title: next.title, priority: next.priority, remaining, createdSoFar } },
+  };
+}
+
+function todoSummaryReply(space: Space, createdCount: number): { content: string; metadata: SpaceMessageMetadata } {
+  if (createdCount === 0) {
+    return { content: "I couldn't find any distinct tasks in that — try describing them one at a time.", metadata: {} };
+  }
+  return {
+    content: `Organized ${createdCount} task${createdCount === 1 ? '' : 's'} for you, sorted by priority. Click Open below to view them.`,
+    metadata: { artifactType: 'todo', artifactId: space.id, artifactTitle: 'To-do List' },
+  };
+}
+
 /**
  * Figures out what a chat message is asking for and, when it's clearly a request to generate
  * a roadmap/mind map/flashcards/to-do list, does the generation right here rather than just
  * replying with text — the reply then carries metadata pointing at what was created so the chat
- * can render an "Open" action. A task brain-dump ("todo") needs no clarifying questions — the
- * message itself is the input — so pressing enter analyzes and prioritizes it immediately,
- * whether typed or spoken via the mic. Anything ambiguous (questions, greetings, unclear
- * requests) falls back to a plain conversational reply.
+ * can render an "Open" action. A task brain-dump ("todo") needs no clarifying questions for
+ * tasks that already have (or don't need) a date — those are prioritized and saved immediately.
+ * The one exception is an important, undated task (e.g. "prepare for interview") — see
+ * generateAndCreateTasks — which holds off creation and asks what date it's for instead; the
+ * `awaiting` check right below picks up the reply to that question on the learner's next
+ * message. Anything ambiguous (questions, greetings, unclear requests) falls back to a plain
+ * conversational reply.
  */
 async function replyToMessage(
   userId: string,
   space: Space,
   content: string
 ): Promise<{ content: string; metadata: SpaceMessageMetadata }> {
+  const history = await listMessages(space.id);
+  const lastAssistant = [...history].reverse().find((m) => m.role === 'assistant');
+  const awaiting = lastAssistant?.metadata.awaitingTaskDate;
+  if (awaiting) {
+    const created = await createTaskWithDate(userId, space.id, awaiting, content);
+    const createdSoFar = awaiting.createdSoFar + (created ? 1 : 0);
+    const [next, ...rest] = awaiting.remaining;
+    return next ? taskDateQuestionReply(createdSoFar, next, rest) : todoSummaryReply(space, createdSoFar);
+  }
+
   const ai = getAiService();
   const intent = await ai.interpretChatIntent(content);
   const topic = intent.topic.trim() || content;
@@ -185,20 +223,14 @@ async function replyToMessage(
       };
     }
     if (intent.action === 'todo') {
-      const tasks = await generateAndCreateTasks({ userId, spaceId: space.id, brainDump: content });
-      if (tasks.length === 0) {
-        return { content: "I couldn't find any distinct tasks in that — try describing them one at a time.", metadata: {} };
-      }
-      return {
-        content: `Organized ${tasks.length} task${tasks.length === 1 ? '' : 's'} for you, sorted by priority. Click Open below to view them.`,
-        metadata: { artifactType: 'todo', artifactId: space.id, artifactTitle: 'To-do List' },
-      };
+      const { createdTasks, pendingDateTasks } = await generateAndCreateTasks({ userId, spaceId: space.id, brainDump: content });
+      const [next, ...rest] = pendingDateTasks;
+      return next ? taskDateQuestionReply(createdTasks.length, next, rest) : todoSummaryReply(space, createdTasks.length);
     }
   } catch {
     return { content: "I couldn't generate that just now — please try again.", metadata: {} };
   }
 
-  const history = await listMessages(space.id);
   const reply = await ai.chatReply(
     space.title,
     history.slice(-20).map((m) => ({ role: m.role, content: m.content }))

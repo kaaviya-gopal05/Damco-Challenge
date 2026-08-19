@@ -18,13 +18,14 @@ describe('draftTasksFromBrainDump', () => {
 
     expect(drafts).toHaveLength(3);
 
-    // High priority (tonight) sorts first, then the dated exam, then the undated errand.
+    // Both are "high": the pitch deck for being due tonight, the exam for being an important,
+    // dated task (see isImportantTask) — tied on priority, so the sooner due date sorts first.
     expect(drafts[0].title).toBe('Complete this pitch deck');
     expect(drafts[0].priority).toBe('high');
     expect(drafts[0].dueDate).toBe(REFERENCE_DATE);
 
     expect(drafts[1].title).toBe('Have an exam');
-    expect(drafts[1].priority).toBe('medium');
+    expect(drafts[1].priority).toBe('high');
     expect(drafts[1].dueDate).toBe(format(addMonths(new Date(REFERENCE_DATE), 1), 'yyyy-MM-dd'));
 
     expect(drafts[2].title).toBe('Buy two eggs');
@@ -53,5 +54,17 @@ describe('draftTasksFromBrainDump', () => {
     const [draft] = draftTasksFromBrainDump('read a book sometime', REFERENCE_DATE);
     expect(draft.priority).toBe('low');
     expect(draft.dueDate).toBeUndefined();
+  });
+
+  it('never gives an important undated task low priority', () => {
+    const [draft] = draftTasksFromBrainDump('prepare for interview', REFERENCE_DATE);
+    expect(draft.priority).toBe('medium');
+    expect(draft.dueDate).toBeUndefined();
+  });
+
+  it('gives an important dated task high priority even without an urgency word', () => {
+    const [draft] = draftTasksFromBrainDump('complete project report by 2026-03-01', REFERENCE_DATE);
+    expect(draft.priority).toBe('high');
+    expect(draft.dueDate).toBe('2026-03-01');
   });
 });

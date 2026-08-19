@@ -276,9 +276,11 @@ See `CLAUDE.md` §4 for the authoritative, enforced structure.
 
 ## 13. Future Scalability Considerations
 
-- **Document chunking/embeddings**: `document_chunks` is already modeled so a future retrieval-
-  augmented "ask questions about this document" feature can add a `vector` column (pgvector)
-  without a schema redesign.
+- **Vector search at scale**: `document_chunks.embedding` (pgvector, migration 0013) is queried
+  today with a brute-force cosine-distance `order by` in `match_document_chunks` — the right
+  choice at personal-scale document counts, but a project with many thousands of chunks per user
+  would want an `ivfflat` or `hnsw` index on that column before the brute-force scan shows up in
+  query latency.
 - **Background processing**: PDF insight generation is synchronous today; the `documents.status`
   column (`processing` → `ready` → `failed`) is designed so a future queue/worker could update it
   asynchronously without changing the read path.

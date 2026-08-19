@@ -1,7 +1,6 @@
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { Sparkles, Layers } from 'lucide-react';
 import { Card, CardContent, Tabs, TabList, Tab, TabPanel, Button, EmptyState } from '@/components/ui';
+import { AiMarkdown } from '@/components/markdown/AiMarkdown';
 import { QuizPanel } from '@/features/documents/components/QuizPanel';
 import { useGenerateFlashcardsFromDocument } from '@/features/documents/hooks/useDocuments';
 import type { Document, DocumentInsight, QaPair, QuizQuestion } from '@/types/database';
@@ -60,9 +59,7 @@ export function DocumentInsights({ document, insights }: { document: Document; i
 
           <div className="mt-5">
             <TabPanel value="summary">
-              <div className="prose prose-sm max-w-none text-ink-700">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{summary?.text ?? 'No summary available.'}</ReactMarkdown>
-              </div>
+              <AiMarkdown content={summary?.text ?? 'No summary available.'} />
             </TabPanel>
 
             <TabPanel value="key_points">

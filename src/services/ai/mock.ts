@@ -1,5 +1,11 @@
 import type { QuizQuestion, ResumeAnalysisResult } from '@/types/database';
-import type { AiService, RoadmapOptions, TaskNotesContext, SkillCourseRecommendation } from '@/services/ai/types';
+import type {
+  AiService,
+  RoadmapOptions,
+  TaskNotesContext,
+  SkillCourseRecommendation,
+  WeeklyPlanSummaryInput,
+} from '@/services/ai/types';
 import { pickTemplate } from '@/services/ai/roadmap-templates';
 import { draftTasksFromBrainDump } from '@/services/ai/taskPriorityHeuristics';
 
@@ -90,6 +96,13 @@ export const mockAiService: AiService = {
       '',
       '### Try it',
       `Spend 15-20 minutes practicing ${taskTitle.toLowerCase()} with a small, concrete example before moving on.`,
+      '',
+      '```javascript',
+      `// A tiny placeholder snippet — connect a Gemini API key for a real, topic-specific example.`,
+      `function practice${taskTitle.replace(/[^a-zA-Z0-9]/g, '')}() {`,
+      '  // your example goes here',
+      '}',
+      '```',
       '',
       '_Demo notes — connect a Gemini API key for real, topic-specific explanations._',
     ].join('\n');
@@ -196,7 +209,20 @@ export const mockAiService: AiService = {
       Array.from({ length: 3 }, (_, i) => ({
         category,
         question: `[Demo] A ${category.replace('_', ' ')} question #${i + 1} for a ${role} role, touching on ${focus}.`,
-        sampleAnswer: `Demo sample answer. Connect a Gemini API key for real, role-specific interview questions.`,
+        sampleAnswer:
+          category === 'coding'
+            ? [
+                'Demo sample answer.',
+                '',
+                '```python',
+                '# Placeholder solution — connect a Gemini API key for a real, role-specific answer.',
+                'def solve(items):',
+                '    return sorted(items)',
+                '```',
+                '',
+                '_Time: O(n log n), Space: O(n)._',
+              ].join('\n')
+            : `Demo sample answer. Connect a Gemini API key for real, role-specific interview questions.`,
         difficulty: (['beginner', 'intermediate', 'advanced'] as const)[i % 3],
       }))
     );
@@ -298,5 +324,17 @@ export const mockAiService: AiService = {
   async generatePrioritizedTasks(brainDump: string, referenceDate: string) {
     await simulateLatency();
     return draftTasksFromBrainDump(brainDump, referenceDate);
+  },
+
+  async generateWeeklyPlanSummary({ focusItems, rescheduledCount }: WeeklyPlanSummaryInput) {
+    await simulateLatency();
+    const rescheduleNote = rescheduledCount > 0 ? ` ${rescheduledCount} task${rescheduledCount === 1 ? '' : 's'} moved to spread the week out evenly.` : '';
+    return {
+      summary:
+        focusItems.length > 0
+          ? `[Demo] You have ${focusItems.length} item${focusItems.length === 1 ? '' : 's'} lined up this week.${rescheduleNote} Connect a Gemini API key for a real, specific weekly summary.`
+          : `[Demo] Nothing urgent is scheduled this week — a good time to get ahead on your roadmap. Connect a Gemini API key for a real weekly summary.`,
+      dailyRhythm: '[Demo] Tackle your highest-priority item earlier in the day while your focus is freshest.',
+    };
   },
 };

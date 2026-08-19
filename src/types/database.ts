@@ -338,10 +338,19 @@ export interface Space {
 export type SpaceMessageRole = 'user' | 'assistant';
 export type SpaceArtifactType = 'roadmap' | 'mindmap' | 'flashcards' | 'document' | 'todo';
 
+export interface PendingDateTask {
+  title: string;
+  priority: TaskPriority;
+}
+
 export interface SpaceMessageMetadata {
   artifactType?: SpaceArtifactType;
   artifactId?: string;
   artifactTitle?: string;
+  /** Set on an assistant message that just asked "what date is this task for?" — the next user
+   *  message in the space is treated as the answer rather than being freshly classified. See
+   *  spaces.service.ts's replyToMessage. */
+  awaitingTaskDate?: PendingDateTask & { remaining: PendingDateTask[]; createdSoFar: number };
 }
 
 export interface SpaceMessage {
@@ -374,4 +383,23 @@ export interface TodoTask {
   completed_at: ISODateString | null;
   created_at: ISODateString;
   updated_at: ISODateString;
+}
+
+export interface WeeklyPlanFocusItem {
+  title: string;
+  /** YYYY-MM-DD */
+  day: string;
+  source: 'todo' | 'roadmap';
+  priority?: TaskPriority;
+}
+
+export interface WeeklyPlan {
+  id: UUID;
+  userId: UUID;
+  weekStart: string;
+  summary: string;
+  dailyRhythm: string | null;
+  rescheduledCount: number;
+  focusItems: WeeklyPlanFocusItem[];
+  createdAt: ISODateString;
 }

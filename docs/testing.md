@@ -28,10 +28,24 @@ show up together in a diff.
 
 ### Pure logic (`src/utils/*.test.ts`, `src/lib/utils.test.ts`)
 
-The spaced-repetition scheduler, roadmap date scheduler, mind-map tree layout, and small
-formatting helpers are all pure functions with real edge cases (ease-factor floors, zero-hour
-tasks, collapsed tree nodes, null durations) — exactly the kind of logic that's cheap to test in
-isolation and easy to silently break during a refactor.
+The spaced-repetition scheduler, roadmap date scheduler, mind-map tree layout, calendar grid/event
+mapping, and small formatting helpers are all pure functions with real edge cases (ease-factor
+floors, zero-hour tasks, collapsed tree nodes, null durations) — exactly the kind of logic that's
+cheap to test in isolation and easy to silently break during a refactor.
+
+Two of these were deliberately extracted out of a stateful hook/service specifically to make them
+testable this way, the same pattern as `commandFlowParsing.ts` below:
+
+- **`weeklyPlanSchedule.test.ts`** — the day-load-balancing scheduler behind the Weekly Plan
+  feature (`scheduleTasksAcrossWeek`, extracted from `weeklyPlan.service.ts`). Covers: undated and
+  completed tasks are left alone, an overdue task gets pulled forward to today, same-day overflow
+  is ordered by priority, a day at capacity (`MAX_TASKS_PER_DAY`) spills into the next open day,
+  and no assignment ever lands outside the 7-day window even when every day is flooded.
+- **`autoScanSchedule.test.ts`** — the "how long until the next background email scan" math
+  (`computeNextScanDelayMs`, extracted from the `useAutoScanEmails` hook in `useAgents.ts`).
+  Covers: first-ever load scans immediately, a fully-elapsed interval scans immediately, a scan
+  moments ago waits out the remainder, and a future timestamp (clock skew) waits a full interval
+  rather than looping.
 
 ### Chat-flow parsing (`src/features/spaces/hooks/commandFlowParsing.test.ts`)
 
@@ -40,6 +54,24 @@ answers — "yes"/"sure"/"please" as affirmative, "December 1, 2026" as a deadli
 number. These were previously private functions inside the hook; they were extracted into
 `commandFlowParsing.ts` specifically so they could be tested directly without mounting the hook,
 a query client, and a fake space.
+
+### Email Monitoring (`src/services/agentService.test.ts`, `src/utils/agentErrorHandler.test.ts`)
+
+`agentService.test.ts` mocks the `supabase.functions.invoke`/`.from` boundary (never a real
+Supabase project) and covers: `classifyEmails` invokes the edge function with the right body and
+surfaces its error message on failure; `fetchEmailMonitoringJobs` maps snake_case rows to the
+domain shape *and* sorts them urgency-first with recency as the tiebreaker, independent of
+whatever order the database returned them in; `autoScanAndClassify` (the background auto-poll's
+entry point) is a true no-op — it never calls `classify-emails` — when the inbox scan finds
+nothing new, and chains into classification when it does. `agentErrorHandler.test.ts` covers
+`classifyError`'s message-sniffing into typed `AgentErrorType`s (rate-limited, timeout, network,
+invalid input) that the UI uses to show the right retry behavior.
+
+### Task due-date parsing (`src/services/tasks.service.test.ts`)
+
+`parseTaskDueDate` turns a free-text chat reply into an ISO date or `null` — explicit dates,
+dates embedded in a sentence, and a list of "no date" phrasings ("skip", "n/a", "not sure") all
+need to resolve correctly for the to-do chat flow to feel conversational rather than form-like.
 
 ### AI service contract (`src/services/ai/mock.test.ts`, `src/services/ai/gemini.test.ts`, `src/services/ai.service.test.ts`)
 
@@ -78,6 +110,19 @@ normally; catches a thrown render error and shows the fallback instead of a blan
 - **Prompt string contents** — tests check that a prompt is *sent* and that structured-output
   calls request JSON mode, not the exact wording of any prompt, so prompt-copy tweaks don't
   spuriously break tests.
+
+## Edge functions aren't part of this suite
+
+`supabase/functions/**` runs on Deno, not Node, and imports from `https://esm.sh/...` URL
+specifiers Vitest/Node can't resolve — so the classification prompt, RAG retrieval, and Gmail
+token refresh logic that live there aren't unit-tested directly. What *is* tested is every
+frontend call site's contract with them (`agentService.test.ts`, `ai/gemini.test.ts`,
+`documentAsk.service.ts`'s error-unwrapping): the request shape sent, and every response/error
+shape handled correctly. The functions themselves are exercised by hand end-to-end (see the
+per-feature verification notes in `INTERVIEW_NOTES.txt`) rather than by an automated suite — a
+Deno test runner for `supabase/functions/_shared/*.ts` (`emailClassifier.ts`'s extraction schema,
+`crypto.ts`'s encrypt/decrypt round-trip) is the natural next step if this suite grows to cover
+the server side too.
 
 ## Not covered yet — recommended next steps
 

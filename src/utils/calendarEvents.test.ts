@@ -97,4 +97,56 @@ describe('buildCalendarEvents', () => {
     expect(dayEvents).toHaveLength(2);
     expect(dayEvents.map((e) => e.kind).sort()).toEqual(['roadmap-task', 'todo-task']);
   });
+
+  it('pushes an incomplete roadmap task to the next day once today is full', () => {
+    // Three independent one-task roadmaps, all paced to land on the same day — a learner with
+    // several active roadmaps at once. Only the first two should fit; the third gets nudged.
+    const roadmaps = ['a', 'b', 'c'].map((letter) =>
+      makeRoadmap({
+        id: `roadmap-${letter}`,
+        created_at: '2026-06-01T00:00:00.000Z',
+        phases: [
+          {
+            id: `phase-${letter}`,
+            roadmap_id: `roadmap-${letter}`,
+            title: 'Phase 1',
+            description: null,
+            order_index: 0,
+            created_at: '',
+            updated_at: '',
+            tasks: [makeTask(`t-${letter}`, 2)],
+          },
+        ],
+      })
+    );
+    const events = buildCalendarEvents(roadmaps, []);
+    expect(events.get('2026-06-01') ?? []).toHaveLength(2);
+    expect(events.get('2026-06-02') ?? []).toHaveLength(1);
+  });
+
+  it('never pushes a roadmap task past its estimated finish date', () => {
+    // A single-week roadmap whose one incomplete task collides with a full day every day
+    // through its finish date (created_at + estimated_duration_weeks) — it must land at or
+    // before that boundary, never spill into the following week.
+    const finishDateKey = '2026-07-08';
+    const filler = Array.from({ length: 8 }, (_, i) => {
+      const dateKey = format(new Date(2026, 6, 1 + i), 'yyyy-MM-dd');
+      return [
+        makeTodoTask({ id: `filler-a-${i}`, due_date: dateKey }),
+        makeTodoTask({ id: `filler-b-${i}`, due_date: dateKey }),
+      ];
+    }).flat();
+    const roadmap = makeRoadmap({
+      created_at: '2026-07-01T00:00:00.000Z',
+      estimated_duration_weeks: 1,
+      phases: [
+        { id: 'phase-1', roadmap_id: 'roadmap-1', title: 'Phase 1', description: null, order_index: 0, created_at: '', updated_at: '', tasks: [makeTask('t1', 2)] },
+      ],
+    });
+    const events = buildCalendarEvents([roadmap], filler);
+    const placedPastFinish = events.get('2026-07-09')?.some((e) => e.id === 't1') ?? false;
+    const placedAtFinish = events.get(finishDateKey)?.some((e) => e.id === 't1') ?? false;
+    expect(placedPastFinish).toBe(false);
+    expect(placedAtFinish).toBe(true);
+  });
 });

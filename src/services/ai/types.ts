@@ -85,6 +85,24 @@ export interface GeneratedTaskDraft {
   dueDate?: string;
 }
 
+export interface WeeklyPlanFocusItemInput {
+  title: string;
+  /** YYYY-MM-DD */
+  day: string;
+  source: 'todo' | 'roadmap';
+  priority?: TaskPriority;
+}
+
+export interface WeeklyPlanSummaryInput {
+  focusItems: WeeklyPlanFocusItemInput[];
+  rescheduledCount: number;
+}
+
+export interface WeeklyPlanSummary {
+  summary: string;
+  dailyRhythm: string;
+}
+
 export interface AiService {
   generateRoadmap(goal: string, options?: RoadmapOptions): Promise<GeneratedRoadmap>;
   generateTaskNotes(context: TaskNotesContext): Promise<string>;
@@ -102,4 +120,5 @@ export interface AiService {
   interpretChatIntent(message: string): Promise<ChatIntent>;
   explainSelection(text: string): Promise<SelectionExplanation>;
   generatePrioritizedTasks(brainDump: string, referenceDate: string): Promise<GeneratedTaskDraft[]>;
+  generateWeeklyPlanSummary(input: WeeklyPlanSummaryInput): Promise<WeeklyPlanSummary>;
 }

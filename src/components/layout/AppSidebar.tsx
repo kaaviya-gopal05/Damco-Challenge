@@ -13,6 +13,8 @@ import {
   Briefcase,
   Calendar,
   ListChecks,
+  Mail,
+  FileSearch,
   MoreHorizontal,
   Trash2,
   type LucideIcon,
@@ -33,6 +35,8 @@ const ICONS: Record<string, LucideIcon> = {
   Briefcase,
   Calendar,
   ListChecks,
+  Mail,
+  FileSearch,
 };
 
 export function AppSidebar({ onNavigate }: { onNavigate?: () => void }) {
