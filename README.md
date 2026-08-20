@@ -11,29 +11,25 @@ widget), and Ascend generates and tracks it for you.
 
 ### Learning Workspace
 
-- **Spaces** — the core of the app. Every roadmap, mind map, flashcard deck, document, and career
-  analysis is created and organized inside a Space, either by typing what you want or clicking a
-  widget (`/roadmap`, `/mindmap`, `/flashcards`, etc.).
+- **Spaces** — the core of the app. Every roadmap, mind map, flashcard deck, and career analysis
+  is created and organized inside a Space, either by typing what you want or clicking a widget
+  (`/roadmap`, `/mindmap`, `/flashcards`, etc.).
 - **Personalized Roadmaps** — turn a goal ("Become a Data Scientist") into a structured plan of
   phases and tasks, with real progress tracking and AI-generated notes per task (headings, code
   blocks, math, and diagrams).
 - **Mind Maps** — an interactive, pannable/zoomable canvas for organizing concepts visually.
 - **Active Flashcards** — spaced repetition with due/new/learning/mastered queues, so cards
   resurface exactly when you're about to forget them.
-- **PDF Intelligence** — upload a PDF and get a summary, key points, Q&A, a quiz, and flashcards
-  generated directly from it.
 - **Learning Videos** — curated, topic-aware YouTube learning resources (falls back to a
   clearly-labeled demo catalogue when no API key is configured).
 - **Weekly Plan** — a deterministic scheduler rebalances overdue and upcoming tasks across the
   week; Gemini only ever writes the plain-English recap on top, never the schedule itself.
-- **To-do Lists** — just describe what you need to get done in a Space's chat; it's organized and
-  prioritized automatically, no separate task app required.
 
 ### Career Intelligence (RAG-Grounded)
 
 Upload your resume in a Space, then either type your target role or attach a job description PDF.
-Ascend chunks and embeds your resume, retrieves the most relevant excerpts (pgvector similarity
-search — retrieval-augmented generation, the same pipeline behind PDF Intelligence), and generates:
+Ascend chunks and embeds your resume and retrieves the most relevant excerpts via pgvector
+similarity search (retrieval-augmented generation), then generates:
 
 - A **skill-gap analysis** — your current vs. required skills for the role, side by side.
 - **Interview questions** — technical, behavioral, system design, and coding, grounded in what's
@@ -45,7 +41,7 @@ search — retrieval-augmented generation, the same pipeline behind PDF Intellig
 
 - **Select & Explain** — highlight any text inside AI-generated notes and press **⌘E** (**Cmd+E**
   on Mac, **Ctrl+E** on Windows/Linux) for an instant, scoped explanation — no menu, no click-through.
-- **Memory** — a unified library across every Space: every roadmap, mind map, deck, and document
+- **Memory** — a unified library across every Space: every roadmap, mind map, and flashcard deck
   you've generated, in one searchable place.
 - **Dashboard** — streaks, study hours, weekly activity, and roadmap completion at a glance.
 - **Global Search** — `Cmd/Ctrl+K` command palette across every feature.
@@ -79,8 +75,7 @@ npm install
    npx supabase db push
    ```
 
-3. Create a **private** Storage bucket named `documents`.
-4. Optional: seed demo catalogue data (skills, interview questions) with `supabase/seed/seed.sql`.
+3. Optional: seed demo catalogue data (skills, interview questions) with `supabase/seed/seed.sql`.
 
 ### 3. Configure environment variables
 
@@ -148,7 +143,7 @@ src/
   routes/             Router configuration + route guards
   pages/              Route-level components
   features/           One folder per product area (spaces, roadmaps, mindmaps, flashcards,
-                       documents, youtube, career, dashboard, analytics, search, auth, settings)
+                       youtube, career, dashboard, analytics, search, auth, settings)
   services/            Supabase + external API access layer (one *.service.ts per domain)
     ai.service.ts       barrel: AiService interface + getAiService()
     ai/                  mock.ts, gemini.ts, roadmap-templates.ts, types.ts
