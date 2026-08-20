@@ -11,7 +11,18 @@ export function MermaidBlock({ code }: { code: string }) {
     let cancelled = false;
     import('mermaid').then(async ({ default: mermaid }) => {
       if (!initialized) {
-        mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'neutral', fontFamily: 'inherit' });
+        // suppressErrorRendering is required to actually get a rejected promise on invalid
+        // syntax — without it, mermaid.render() resolves with its own "Syntax error in text"
+        // bomb-icon SVG instead of throwing, and the catch below never fires (the AI
+        // occasionally generates a diagram with invalid syntax; this hides it instead of
+        // showing users a raw parser error).
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: 'neutral',
+          fontFamily: 'inherit',
+          suppressErrorRendering: true,
+        });
         initialized = true;
       }
       try {

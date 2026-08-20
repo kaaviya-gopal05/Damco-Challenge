@@ -243,6 +243,12 @@ export function useCommandFlow(space: Space) {
         return;
       }
       materialText = text;
+    } catch {
+      // A corrupted or unsupported PDF throws out of extractTextFromPdf itself, rather than just
+      // returning short/empty text — caught here so it surfaces as a clear message instead of an
+      // unhandled rejection with no user-facing feedback at all.
+      notify.error(isCareer ? "Couldn't read that resume — try a different PDF." : "Couldn't read that PDF — try a different file.");
+      return;
     } finally {
       setIsExtracting(false);
     }
@@ -302,6 +308,12 @@ export function useCommandFlow(space: Space) {
         return;
       }
       jdText = text;
+    } catch {
+      // A corrupted or unsupported PDF throws out of extractTextFromPdf itself, rather than just
+      // returning short/empty text — caught here so it surfaces as a clear message instead of an
+      // unhandled rejection with no user-facing feedback at all.
+      notify.error("Couldn't read that job description — try a different PDF.");
+      return;
     } finally {
       setIsExtracting(false);
     }

@@ -1,15 +1,4 @@
-import {
-  Map,
-  Share2,
-  Layers,
-  FileText,
-  PlayCircle,
-  Briefcase,
-  CalendarClock,
-  FileSearch,
-  MailCheck,
-  type LucideIcon,
-} from 'lucide-react';
+import { Map, Share2, Layers, FileText, PlayCircle, Briefcase, CalendarClock, type LucideIcon } from 'lucide-react';
 
 interface Feature {
   icon: LucideIcon;
@@ -33,17 +22,11 @@ const FEATURES: Feature[] = [
     badge: 'Agent',
   },
   {
-    icon: FileSearch,
-    title: 'Ask Your Documents',
+    icon: Briefcase,
+    title: 'Career Intelligence',
     description:
-      'Ask a question in plain English and get an answer grounded in your own uploaded PDFs, with citations pointing back to the exact source.',
+      'Upload your resume in a chat, then type your target role or attach a job description — get a RAG-grounded skill-gap analysis and interview questions, and keep asking follow-up questions about your fit afterward.',
     badge: 'RAG',
-  },
-  {
-    icon: MailCheck,
-    title: 'Email Monitor',
-    description:
-      'Automatically scans your inbox every 30 minutes for interviews, exams, and deadlines, and surfaces the important ones first — nothing to click.',
   },
   {
     icon: Share2,
@@ -68,12 +51,6 @@ const FEATURES: Feature[] = [
     title: 'Learning Videos',
     description:
       'Discover curated educational YouTube content by topic and difficulty, and save it straight to your workspace.',
-  },
-  {
-    icon: Briefcase,
-    title: 'Career Intelligence',
-    description:
-      'See your skill gaps against your target role, practice real interview questions — complete with runnable, copyable code snippets — and follow a career roadmap.',
   },
 ];
 

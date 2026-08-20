@@ -63,7 +63,7 @@ export interface SkillImprovementPlan {
   quiz: QuizQuestion[];
 }
 
-export type ChatIntentAction = 'roadmap' | 'mindmap' | 'flashcards' | 'todo' | 'career_question' | 'chat';
+export type ChatIntentAction = 'roadmap' | 'mindmap' | 'flashcards' | 'todo' | 'chat';
 
 export interface ChatIntent {
   action: ChatIntentAction;

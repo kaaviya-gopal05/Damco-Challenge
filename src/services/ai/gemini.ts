@@ -43,9 +43,23 @@ export class GeminiService implements AiService {
     return data.text;
   }
 
-  private async completeJson<T>(prompt: string): Promise<T> {
-    const raw = await this.complete(prompt, true);
-    return JSON.parse(raw) as T;
+  /** Gemini's JSON mode is normally clean, but not guaranteed — an occasional truncated or
+   *  slightly malformed response would otherwise surface as a hard failure (e.g. roadmap
+   *  generation's "I couldn't generate that just now") on what's really just one bad response.
+   *  Retried once, with a fresh model call rather than re-parsing the same bad text, before
+   *  actually giving up — same resilience the edge-function side already has via
+   *  callGeminiJsonValidated. */
+  private async completeJson<T>(prompt: string, attempts = 2): Promise<T> {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      try {
+        const raw = await this.complete(prompt, true);
+        return JSON.parse(raw) as T;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('AI returned malformed JSON.');
   }
 
   generateRoadmap(goal: string, options?: RoadmapOptions) {
@@ -205,19 +219,16 @@ export class GeminiService implements AiService {
   interpretChatIntent(message: string) {
     return this.completeJson<ChatIntent>(
       `A learner typed or spoke this message into a learning-app chat box: "${message}". Decide what they want. ` +
-        `Return JSON matching exactly: { "action": "roadmap"|"mindmap"|"flashcards"|"todo"|"career_question"|"chat", ` +
-        `"topic": string }. Use "roadmap" if they want a structured study plan or are stating a single learning goal ` +
-        `(e.g. "become a...", "learn X", "I want to learn..."). Use "mindmap" only if they explicitly ask for a mind ` +
-        `map or to break a topic into branches/concepts. Use "flashcards" only if they explicitly ask for flashcards ` +
-        `or cards to memorize. Use "todo" if they are listing one or more concrete tasks, errands, appointments, or ` +
-        `deadlines they need to get done — this is NOT a learning goal — such as a stream-of-consciousness list of ` +
-        `things to do (e.g. "buy groceries, and then I have an exam next month, and I need to finish this pitch deck ` +
-        `tonight"), a reminder, or an explicit to-do/task-list request. Use "career_question" if they're asking ` +
-        `about their own resume or fit for a role — e.g. "am I suitable for this JD?", pasting a job description and ` +
-        `asking whether they match it, or asking what to improve on their resume for a role. Use "chat" if the ` +
-        `message is a question, greeting, or anything that isn't clearly asking to generate one of those things. ` +
-        `"topic" is a short (under 10 words) restatement of what to generate content about — for "chat", "todo", or ` +
-        `"career_question" just repeat the message.`
+        `Return JSON matching exactly: { "action": "roadmap"|"mindmap"|"flashcards"|"todo"|"chat", "topic": string }. ` +
+        `Use "roadmap" if they want a structured study plan or are stating a single learning goal (e.g. "become a...", ` +
+        `"learn X", "I want to learn..."). Use "mindmap" only if they explicitly ask for a mind map or to break a topic ` +
+        `into branches/concepts. Use "flashcards" only if they explicitly ask for flashcards or cards to memorize. ` +
+        `Use "todo" if they are listing one or more concrete tasks, errands, appointments, or deadlines they need to ` +
+        `get done — this is NOT a learning goal — such as a stream-of-consciousness list of things to do (e.g. "buy ` +
+        `groceries, and then I have an exam next month, and I need to finish this pitch deck tonight"), a reminder, ` +
+        `or an explicit to-do/task-list request. Use "chat" if the message is a question, greeting, or anything that ` +
+        `isn't clearly asking to generate one of those things. "topic" is a short (under 10 words) restatement of ` +
+        `what to generate content about — for "chat" or "todo" just repeat the message.`
     );
   }
 

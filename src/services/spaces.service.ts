@@ -159,6 +159,23 @@ function todoSummaryReply(space: Space, createdCount: number): { content: string
   };
 }
 
+/** A space becomes a dedicated resume/JD chat the moment its career flow generates a profile —
+ *  looked up before the general classifier runs at all, so a career space's follow-up questions
+ *  ("does this JD suit me?") are answered deterministically via RAG rather than depending on the
+ *  classifier correctly telling that apart from a roadmap/mindmap/flashcards request. See
+ *  askCareerQuestion. */
+async function findResumeDocumentId(spaceId: string): Promise<string | null> {
+  const { data } = await supabase
+    .from('career_profiles')
+    .select('resume_document_id')
+    .eq('space_id', spaceId)
+    .not('resume_document_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.resume_document_id ?? null;
+}
+
 /**
  * Figures out what a chat message is asking for and, when it's clearly a request to generate
  * a roadmap/mind map/flashcards/to-do list, does the generation right here rather than just
@@ -168,10 +185,10 @@ function todoSummaryReply(space: Space, createdCount: number): { content: string
  * The one exception is an important, undated task (e.g. "prepare for interview") — see
  * generateAndCreateTasks — which holds off creation and asks what date it's for instead; the
  * `awaiting` check right below picks up the reply to that question on the learner's next
- * message. A "career_question" (e.g. "Am I suitable for this JD?" with a pasted job
- * description) is answered with a RAG-grounded reply over this space's resume, when it has one —
- * see askCareerQuestion. Anything ambiguous (questions, greetings, unclear requests, or a career
- * question in a space with no resume on file) falls back to a plain conversational reply.
+ * message. Once a space has a resume on file (its career flow has run), every ordinary message
+ * from then on is answered as a RAG-grounded resume/JD question — see askCareerQuestion — never
+ * routed to roadmap/mindmap/flashcards/todo generation, so a career space stays a resume chat and
+ * nothing else. Only a space with no resume on file reaches the general classifier below.
  */
 async function replyToMessage(
   userId: string,
@@ -186,6 +203,16 @@ async function replyToMessage(
     const createdSoFar = awaiting.createdSoFar + (created ? 1 : 0);
     const [next, ...rest] = awaiting.remaining;
     return next ? taskDateQuestionReply(createdSoFar, next, rest) : todoSummaryReply(space, createdSoFar);
+  }
+
+  const resumeDocumentId = await findResumeDocumentId(space.id);
+  if (resumeDocumentId) {
+    try {
+      const answer = await askCareerQuestion(content, resumeDocumentId);
+      return { content: answer, metadata: {} };
+    } catch {
+      return { content: "I couldn't answer that just now — please try again.", metadata: {} };
+    }
   }
 
   const ai = getAiService();
@@ -225,22 +252,6 @@ async function replyToMessage(
       const { createdTasks, pendingDateTasks } = await generateAndCreateTasks({ userId, spaceId: space.id, brainDump: content });
       const [next, ...rest] = pendingDateTasks;
       return next ? taskDateQuestionReply(createdTasks.length, next, rest) : todoSummaryReply(space, createdTasks.length);
-    }
-    if (intent.action === 'career_question') {
-      const { data: profile } = await supabase
-        .from('career_profiles')
-        .select('resume_document_id')
-        .eq('space_id', space.id)
-        .not('resume_document_id', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (profile?.resume_document_id) {
-        const answer = await askCareerQuestion(content, profile.resume_document_id);
-        return { content: answer, metadata: {} };
-      }
-      // No resume on file for this space — fall through to a plain conversational reply below
-      // rather than erroring, since the classifier can't see space context when it decides this.
     }
   } catch {
     return { content: "I couldn't generate that just now — please try again.", metadata: {} };

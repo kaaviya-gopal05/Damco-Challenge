@@ -110,8 +110,6 @@ describe('mockAiService.interpretChatIntent', () => {
     ['I need to buy groceries and then finish my taxes by tomorrow', 'todo'],
     ['add this to my to-do list: call the dentist', 'todo'],
     ['remind me to submit the report', 'todo'],
-    ['Am I suitable for this JD? <pasted job description>', 'career_question'],
-    ['Does my resume look like a good fit for a backend role?', 'career_question'],
   ] as const)('classifies "%s" as "%s"', async (message, expected) => {
     const intent = await mockAiService.interpretChatIntent(message);
     expect(intent.action).toBe(expected);
