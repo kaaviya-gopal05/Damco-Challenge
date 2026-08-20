@@ -5,14 +5,13 @@ import { EmptyState, SkeletonList } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { useSpace } from '@/features/spaces/hooks/useSpaces';
 import { useCommandFlow, type FlowKind } from '@/features/spaces/hooks/useCommandFlow';
-import { useUploadDocument } from '@/features/documents/hooks/useDocuments';
 import { SpaceChatPanel } from '@/features/spaces/components/SpaceChatPanel';
 import { SpaceArtifactPanel } from '@/features/spaces/components/SpaceArtifactPanel';
 import type { ActiveView } from '@/features/spaces/types';
 import type { SlashCommandId } from '@/features/spaces/components/SlashCommandMenu';
 import type { Space } from '@/types/database';
 
-const FLOW_KINDS: FlowKind[] = ['roadmap', 'mindmap', 'flashcards'];
+const FLOW_KINDS: FlowKind[] = ['roadmap', 'mindmap', 'flashcards', 'career'];
 const OVERVIEW_CHAT_WIDTH = 70;
 const DETAIL_CHAT_WIDTH = 50;
 const MIN_CHAT_WIDTH = 25;
@@ -30,15 +29,12 @@ function parseOpenParam(open: string | null): ActiveView | null {
 
 function SpaceDetailContent({ space, spaceId }: { space: Space; spaceId: string }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const uploadDocument = useUploadDocument();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'overview' });
   const [panelOpen, setPanelOpen] = useState(true);
   const [chatWidthPercent, setChatWidthPercent] = useState(OVERVIEW_CHAT_WIDTH);
   const [isDragging, setIsDragging] = useState(false);
-  const [todoHintActive, setTodoHintActive] = useState(false);
   const [firstMessage, setFirstMessage] = useState<string | null>(null);
   const commandFlow = useCommandFlow(space);
   const startedFlowRef = useRef<string | null>(null);
@@ -110,34 +106,13 @@ function SpaceDetailContent({ space, spaceId }: { space: Space; spaceId: string 
       case 'roadmap':
       case 'mindmap':
       case 'flashcards':
+      case 'career':
         commandFlow.start(id);
-        break;
-      case 'todo':
-        // Unlike the other widgets, this doesn't start a Q&A flow — a task brain-dump needs
-        // no clarifying questions. It just hints/focuses the composer; sending goes straight
-        // through the chat's AI intent classifier (spaces.service.ts's replyToMessage), which
-        // prioritizes and saves the tasks immediately.
-        setTodoHintActive(true);
-        break;
-      case 'pdf':
-        fileInputRef.current?.click();
         break;
       case 'videos':
         openView({ type: 'videos' });
         break;
     }
-  }
-
-  function handlePdfFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    uploadDocument.mutate(
-      { file, spaceId },
-      {
-        onSuccess: ({ document }) => openView({ type: 'document', id: document.id }),
-      }
-    );
   }
 
   const showDivider = panelOpen && isDetailView;
@@ -155,10 +130,9 @@ function SpaceDetailContent({ space, spaceId }: { space: Space; spaceId: string 
           flow={commandFlow.flow}
           onSubmitFlowAnswer={commandFlow.submitAnswer}
           onUploadMaterial={commandFlow.uploadMaterial}
+          onUploadJobDescription={commandFlow.uploadJobDescription}
           onSkipMaterial={commandFlow.skipMaterial}
           isFlowBusy={commandFlow.isBusy}
-          todoHintActive={todoHintActive}
-          onDismissTodoHint={() => setTodoHintActive(false)}
           firstMessage={firstMessage}
         />
       </div>
@@ -203,8 +177,6 @@ function SpaceDetailContent({ space, spaceId }: { space: Space; spaceId: string 
           />
         </div>
       )}
-
-      <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfFileChange} />
     </div>
   );
 }

@@ -19,7 +19,6 @@ import { RecentDocumentsCard } from '@/features/dashboard/components/RecentDocum
 import { RecommendedVideosCard } from '@/features/dashboard/components/RecommendedVideosCard';
 import { CareerProgressCard } from '@/features/dashboard/components/CareerProgressCard';
 import { WeeklyPlanCard } from '@/features/dashboard/components/WeeklyPlanCard';
-import { EmailMonitoringWidget } from '@/features/agents/EmailMonitoringWidget';
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -81,7 +80,7 @@ export function DashboardPage() {
 
           <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[2fr_1fr] lg:items-stretch">
             <WeeklyActivityChart data={analytics?.weeklyActivity ?? []} />
-            <EmailMonitoringWidget />
+            <TodoTasksCard tasks={todoTasks ?? []} />
 
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
               <ActiveRoadmapCard roadmap={activeRoadmap} />
@@ -90,17 +89,18 @@ export function DashboardPage() {
                 onToggle={(taskId, isCompleted) => setTaskCompletion.mutate({ taskId, isCompleted })}
               />
             </div>
-            <TodoTasksCard tasks={todoTasks ?? []} />
-
-            <RecommendedVideosCard topic={activeRoadmap?.title ?? 'programming'} />
             <DueFlashcardsCard cards={dueCards ?? []} />
 
+            <RecommendedVideosCard topic={activeRoadmap?.title ?? 'programming'} />
             <CareerProgressCard
               careerProfile={careerProfile}
               masteredCount={masteredCount}
               totalCount={generatedQuestions.length}
             />
-            <RecentDocumentsCard documents={documents ?? []} />
+
+            <div className="lg:col-span-2">
+              <RecentDocumentsCard documents={documents ?? []} />
+            </div>
           </div>
         </>
       )}

@@ -1,7 +1,7 @@
-import { ArrowLeft, Map, Share2, Layers, FileText, PlayCircle, ListChecks, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ArrowLeft, Map, Share2, Layers, FileText, PlayCircle, Briefcase, Sparkles } from 'lucide-react';
 import { Badge, Button, Card, CardContent, SkeletonList } from '@/components/ui';
 import { useSpaceContents } from '@/features/spaces/hooks/useSpaces';
-import { useSpaceTasks } from '@/features/tasks/hooks/useTasks';
 import { SpaceRoadmapView } from '@/features/spaces/components/panels/SpaceRoadmapView';
 import { SpaceMindMapView } from '@/features/spaces/components/panels/SpaceMindMapView';
 import { SpaceFlashcardDeckView } from '@/features/spaces/components/panels/SpaceFlashcardDeckView';
@@ -60,7 +60,7 @@ export function SpaceArtifactPanel({
   onTriggerCommand: (id: SlashCommandId) => void;
 }) {
   const { data: contents, isLoading } = useSpaceContents(space.id);
-  const { data: tasks } = useSpaceTasks(space.id);
+  const navigate = useNavigate();
 
   if (activeView.type !== 'overview') {
     return (
@@ -167,7 +167,32 @@ export function SpaceArtifactPanel({
         />
       )}
 
-      {documents.length > 0 ? (
+      {contents?.careerProfile ? (
+        <Card
+          className="cursor-pointer transition-shadow hover:shadow-card"
+          onClick={() => navigate(`/app/career?role=${contents.careerProfile!.id}`)}
+        >
+          <CardContent className="flex items-center gap-2.5 p-4">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
+              <Briefcase className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-ink-900">{contents.careerProfile.target_role}</p>
+              <p className="text-xs text-ink-400">Career Intelligence</p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <SourceEmptyCard
+          icon={Briefcase}
+          title="Career Intelligence"
+          description="Upload your resume and tell me the role you're targeting for a grounded skill-gap analysis."
+          actionLabel="Start career prep"
+          onAction={() => onTriggerCommand('career')}
+        />
+      )}
+
+      {documents.length > 0 && (
         <Card>
           <CardContent className="flex flex-col gap-2.5 p-4">
             <div className="flex items-center gap-2.5">
@@ -190,25 +215,8 @@ export function SpaceArtifactPanel({
                 </button>
               ))}
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              leftIcon={<Sparkles className="h-3.5 w-3.5" />}
-              onClick={() => onTriggerCommand('pdf')}
-              className="self-start"
-            >
-              Upload another PDF
-            </Button>
           </CardContent>
         </Card>
-      ) : (
-        <SourceEmptyCard
-          icon={FileText}
-          title="PDF Intelligence"
-          description="Upload a PDF to get a summary, key points, Q&A, and a quiz."
-          actionLabel="Upload PDF"
-          onAction={() => onTriggerCommand('pdf')}
-        />
       )}
 
       <Card className="cursor-pointer transition-shadow hover:shadow-card" onClick={() => setActiveView({ type: 'videos' })}>
@@ -222,30 +230,6 @@ export function SpaceArtifactPanel({
           </div>
         </CardContent>
       </Card>
-
-      {tasks && tasks.length > 0 ? (
-        <Card className="cursor-pointer transition-shadow hover:shadow-card" onClick={() => setActiveView({ type: 'todo' })}>
-          <CardContent className="flex items-center gap-2.5 p-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
-              <ListChecks className="h-4 w-4" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-ink-900">To-do List</p>
-              <p className="truncate text-xs text-ink-400">
-                {tasks.filter((t) => !t.is_completed).length} open task{tasks.filter((t) => !t.is_completed).length === 1 ? '' : 's'}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <SourceEmptyCard
-          icon={ListChecks}
-          title="To-do List"
-          description="Speak or type what you need to get done — I'll organize it by priority."
-          actionLabel="Add tasks"
-          onAction={() => onTriggerCommand('todo')}
-        />
-      )}
     </div>
   );
 }

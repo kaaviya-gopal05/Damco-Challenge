@@ -3,7 +3,6 @@ import { AppSidebar } from '@/components/layout/AppSidebar';
 import { Topbar } from '@/components/layout/Topbar';
 import { MobileDrawer } from '@/components/layout/MobileDrawer';
 import { CommandPalette } from '@/features/search/components/CommandPalette';
-import { useAutoScanEmails } from '@/hooks/useAgents';
 import { cn } from '@/lib/utils';
 
 const SPACE_DETAIL_PATTERN = /^\/app\/spaces\/[^/]+$/;
@@ -11,7 +10,6 @@ const SPACE_DETAIL_PATTERN = /^\/app\/spaces\/[^/]+$/;
 export function AppLayout() {
   const location = useLocation();
   const isFullBleed = SPACE_DETAIL_PATTERN.test(location.pathname);
-  useAutoScanEmails();
 
   return (
     <div className="flex h-screen overflow-hidden bg-ink-50">

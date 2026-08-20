@@ -27,3 +27,14 @@ export function parseHours(text: string): number {
   const value = match ? parseFloat(match[0]) : NaN;
   return Number.isFinite(value) && value > 0 ? value : 2;
 }
+
+const UNCERTAIN_ROLE_ANSWERS = new Set(["i don't know", 'idk', 'not sure', 'unsure', 'no', 'none', 'skip', 'n/a', 'na', 'nope']);
+
+/** A direct answer to "what role are you targeting?" is only rejected (re-asked) when it's
+ *  empty or an explicit non-answer — anything else, however phrased, is taken at face value as
+ *  the role, same trust level the rest of this flow gives a topic/goal answer. */
+export function isValidRoleAnswer(text: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed.length < 2) return false;
+  return !UNCERTAIN_ROLE_ANSWERS.has(trimmed.toLowerCase());
+}

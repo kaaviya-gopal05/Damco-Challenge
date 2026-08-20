@@ -4,6 +4,7 @@ import { generateAndCreateRoadmap } from '@/services/roadmaps.service';
 import { createMindMapFromAiTopic } from '@/services/mindmaps.service';
 import { createDeckWithGeneratedCards } from '@/services/flashcards.service';
 import { createTaskWithDate, generateAndCreateTasks } from '@/services/tasks.service';
+import { askCareerQuestion } from '@/services/career.service';
 import type {
   CareerProfile,
   Difficulty,
@@ -60,29 +61,25 @@ export async function createSpace(userId: string, input: CreateSpaceInput): Prom
 }
 
 export async function deleteSpace(spaceId: string): Promise<void> {
+  // career_profiles.space_id is "on delete set null" at the database level (nullable so a
+  // profile *could* survive its space, same as roadmaps/mind maps/decks/documents) — but a career
+  // profile only ever exists because a space's chat flow generated it, so leaving it behind would
+  // strand its role on the Career Intelligence page with no way back to where it came from.
+  // Deleted explicitly here rather than loosening the FK, since every other space-linked table
+  // deliberately keeps the "survive its space" behavior.
+  const { error: careerError } = await supabase.from('career_profiles').delete().eq('space_id', spaceId);
+  if (careerError) throw careerError;
   const { error } = await supabase.from('spaces').delete().eq('id', spaceId);
   if (error) throw error;
 }
 
-type AttachableTable = 'roadmaps' | 'mind_maps' | 'flashcard_decks' | 'documents';
-
-/**
- * Used by the "new space" chat/widget flow: the artifact (roadmap/mind map/deck/document) is
- * generated first with no space, then wrapped in a freshly created space here. Creating the
- * space only after generation succeeds means a cancelled or failed generation never leaves an
- * empty orphan space behind.
- */
-export async function attachToNewSpace(
-  userId: string,
-  table: AttachableTable,
-  recordId: string,
-  title: string,
-  goalText?: string
-): Promise<Space> {
-  const space = await createSpace(userId, { title, goalText });
-  const { error } = await supabase.from(table).update({ space_id: space.id }).eq('id', recordId);
+/** Renames a space once its real subject becomes known after creation — e.g. a career space is
+ *  created with a placeholder title ("Career Intelligence") before the target role is asked for
+ *  in chat, and gets renamed to that role here so it reads correctly everywhere space titles show
+ *  up (sidebar, spaces list, search) instead of every career space looking identical. */
+export async function updateSpaceTitle(spaceId: string, title: string): Promise<void> {
+  const { error } = await supabase.from('spaces').update({ title }).eq('id', spaceId);
   if (error) throw error;
-  return space;
 }
 
 export async function touchSpace(spaceId: string): Promise<void> {
@@ -171,8 +168,10 @@ function todoSummaryReply(space: Space, createdCount: number): { content: string
  * The one exception is an important, undated task (e.g. "prepare for interview") — see
  * generateAndCreateTasks — which holds off creation and asks what date it's for instead; the
  * `awaiting` check right below picks up the reply to that question on the learner's next
- * message. Anything ambiguous (questions, greetings, unclear requests) falls back to a plain
- * conversational reply.
+ * message. A "career_question" (e.g. "Am I suitable for this JD?" with a pasted job
+ * description) is answered with a RAG-grounded reply over this space's resume, when it has one —
+ * see askCareerQuestion. Anything ambiguous (questions, greetings, unclear requests, or a career
+ * question in a space with no resume on file) falls back to a plain conversational reply.
  */
 async function replyToMessage(
   userId: string,
@@ -226,6 +225,22 @@ async function replyToMessage(
       const { createdTasks, pendingDateTasks } = await generateAndCreateTasks({ userId, spaceId: space.id, brainDump: content });
       const [next, ...rest] = pendingDateTasks;
       return next ? taskDateQuestionReply(createdTasks.length, next, rest) : todoSummaryReply(space, createdTasks.length);
+    }
+    if (intent.action === 'career_question') {
+      const { data: profile } = await supabase
+        .from('career_profiles')
+        .select('resume_document_id')
+        .eq('space_id', space.id)
+        .not('resume_document_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (profile?.resume_document_id) {
+        const answer = await askCareerQuestion(content, profile.resume_document_id);
+        return { content: answer, metadata: {} };
+      }
+      // No resume on file for this space — fall through to a plain conversational reply below
+      // rather than erroring, since the classifier can't see space context when it decides this.
     }
   } catch {
     return { content: "I couldn't generate that just now — please try again.", metadata: {} };
@@ -283,7 +298,9 @@ export async function migrateOrphanedContentIntoDefaultSpace(userId: string): Pr
     supabase.from('roadmaps').select('id', { count: 'exact', head: true }).eq('user_id', userId).is('space_id', null),
     supabase.from('mind_maps').select('id', { count: 'exact', head: true }).eq('user_id', userId).is('space_id', null),
     supabase.from('flashcard_decks').select('id', { count: 'exact', head: true }).eq('user_id', userId).is('space_id', null),
-    supabase.from('documents').select('id', { count: 'exact', head: true }).eq('user_id', userId).is('space_id', null),
+    // Resumes always have space_id null by design (see career.service.ts's createResumeDocument)
+    // — they're not orphaned content, they were just never meant to belong to a space.
+    supabase.from('documents').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('is_resume', false).is('space_id', null),
   ]);
 
   const hasOrphans = (roadmapCount ?? 0) > 0 || (mindMapCount ?? 0) > 0 || (deckCount ?? 0) > 0 || (docCount ?? 0) > 0;
@@ -293,7 +310,7 @@ export async function migrateOrphanedContentIntoDefaultSpace(userId: string): Pr
       supabase.from('roadmaps').update({ space_id: fallbackSpace.id }).eq('user_id', userId).is('space_id', null),
       supabase.from('mind_maps').update({ space_id: fallbackSpace.id }).eq('user_id', userId).is('space_id', null),
       supabase.from('flashcard_decks').update({ space_id: fallbackSpace.id }).eq('user_id', userId).is('space_id', null),
-      supabase.from('documents').update({ space_id: fallbackSpace.id }).eq('user_id', userId).is('space_id', null),
+      supabase.from('documents').update({ space_id: fallbackSpace.id }).eq('user_id', userId).eq('is_resume', false).is('space_id', null),
     ]);
     didMigrate = true;
   }

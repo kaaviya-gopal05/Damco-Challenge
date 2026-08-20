@@ -29,7 +29,13 @@ export async function searchAll(userId: string, query: string): Promise<SearchRe
       .ilike('title', like)
       .limit(5),
     supabase.from('flashcard_decks').select('id, title, description, space_id').eq('user_id', userId).ilike('title', like).limit(5),
-    supabase.from('documents').select('id, title, space_id').eq('user_id', userId).ilike('title', like).limit(5),
+    supabase
+      .from('documents')
+      .select('id, title, space_id')
+      .eq('user_id', userId)
+      .eq('is_resume', false)
+      .ilike('title', like)
+      .limit(5),
     supabase.from('mind_maps').select('id, title, description, space_id').eq('user_id', userId).ilike('title', like).limit(5),
     supabase
       .from('saved_resources')

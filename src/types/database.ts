@@ -157,6 +157,10 @@ export interface Document {
   file_size_bytes: number | null;
   page_count: number | null;
   status: DocumentStatus;
+  /** True for a resume uploaded through the Career Intelligence chat flow — chunked and
+   *  embedded through the same pipeline as any other document, but excluded from the general
+   *  Documents/Memory UI, which only ever expects real uploaded study material. */
+  is_resume: boolean;
   created_at: ISODateString;
   updated_at: ISODateString;
 }
@@ -261,6 +265,8 @@ export interface CareerProfile {
   career_track: string;
   target_role: string | null;
   current_level: Difficulty | null;
+  job_description: string | null;
+  resume_document_id: UUID | null;
   resume_text: string | null;
   resume_file_name: string | null;
   resume_analysis: ResumeAnalysisResult | null;
@@ -336,7 +342,7 @@ export interface Space {
 }
 
 export type SpaceMessageRole = 'user' | 'assistant';
-export type SpaceArtifactType = 'roadmap' | 'mindmap' | 'flashcards' | 'document' | 'todo';
+export type SpaceArtifactType = 'roadmap' | 'mindmap' | 'flashcards' | 'document' | 'todo' | 'career';
 
 export interface PendingDateTask {
   title: string;

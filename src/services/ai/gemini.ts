@@ -197,24 +197,27 @@ export class GeminiService implements AiService {
     return this.complete(
       `You are a friendly, concise learning assistant inside a workspace called "${spaceTitle}". Continue this ` +
         `conversation with one short, helpful reply (2-4 sentences, no markdown headings). If it's natural, remind ` +
-        `the learner they can type "/" to generate a roadmap, mind map, flashcards, PDF insights, or find learning ` +
-        `videos for this space — but don't force that reminder into every reply.\n\n${transcript}\n\nAssistant:`
+        `the learner they can type "/" to generate a roadmap, mind map, flashcards, a resume skill-gap analysis, or ` +
+        `find learning videos for this space — but don't force that reminder into every reply.\n\n${transcript}\n\nAssistant:`
     );
   }
 
   interpretChatIntent(message: string) {
     return this.completeJson<ChatIntent>(
       `A learner typed or spoke this message into a learning-app chat box: "${message}". Decide what they want. ` +
-        `Return JSON matching exactly: { "action": "roadmap"|"mindmap"|"flashcards"|"todo"|"chat", "topic": string }. ` +
-        `Use "roadmap" if they want a structured study plan or are stating a single learning goal (e.g. "become a...", ` +
-        `"learn X", "I want to learn..."). Use "mindmap" only if they explicitly ask for a mind map or to break a topic ` +
-        `into branches/concepts. Use "flashcards" only if they explicitly ask for flashcards or cards to memorize. ` +
-        `Use "todo" if they are listing one or more concrete tasks, errands, appointments, or deadlines they need to ` +
-        `get done — this is NOT a learning goal — such as a stream-of-consciousness list of things to do (e.g. "buy ` +
-        `groceries, and then I have an exam next month, and I need to finish this pitch deck tonight"), a reminder, ` +
-        `or an explicit to-do/task-list request. Use "chat" if the message is a question, greeting, or anything that ` +
-        `isn't clearly asking to generate one of those things. "topic" is a short (under 10 words) restatement of ` +
-        `what to generate content about — for "chat" or "todo" just repeat the message.`
+        `Return JSON matching exactly: { "action": "roadmap"|"mindmap"|"flashcards"|"todo"|"career_question"|"chat", ` +
+        `"topic": string }. Use "roadmap" if they want a structured study plan or are stating a single learning goal ` +
+        `(e.g. "become a...", "learn X", "I want to learn..."). Use "mindmap" only if they explicitly ask for a mind ` +
+        `map or to break a topic into branches/concepts. Use "flashcards" only if they explicitly ask for flashcards ` +
+        `or cards to memorize. Use "todo" if they are listing one or more concrete tasks, errands, appointments, or ` +
+        `deadlines they need to get done — this is NOT a learning goal — such as a stream-of-consciousness list of ` +
+        `things to do (e.g. "buy groceries, and then I have an exam next month, and I need to finish this pitch deck ` +
+        `tonight"), a reminder, or an explicit to-do/task-list request. Use "career_question" if they're asking ` +
+        `about their own resume or fit for a role — e.g. "am I suitable for this JD?", pasting a job description and ` +
+        `asking whether they match it, or asking what to improve on their resume for a role. Use "chat" if the ` +
+        `message is a question, greeting, or anything that isn't clearly asking to generate one of those things. ` +
+        `"topic" is a short (under 10 words) restatement of what to generate content about — for "chat", "todo", or ` +
+        `"career_question" just repeat the message.`
     );
   }
 

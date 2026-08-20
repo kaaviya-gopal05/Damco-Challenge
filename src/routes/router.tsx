@@ -18,9 +18,6 @@ const NewSpaceChatPage = lazy(() => import('@/pages/NewSpaceChatPage').then((m) 
 const SpaceDetailPage = lazy(() => import('@/pages/SpaceDetailPage').then((m) => ({ default: m.SpaceDetailPage })));
 const MemoryPage = lazy(() => import('@/pages/MemoryPage').then((m) => ({ default: m.MemoryPage })));
 const CareerPage = lazy(() => import('@/pages/CareerPage').then((m) => ({ default: m.CareerPage })));
-const TaskListPage = lazy(() => import('@/pages/TaskListPage').then((m) => ({ default: m.TaskListPage })));
-const EmailPage = lazy(() => import('@/pages/EmailPage').then((m) => ({ default: m.EmailPage })));
-const AskDocsPage = lazy(() => import('@/pages/AskDocsPage').then((m) => ({ default: m.AskDocsPage })));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 
 function PageFallback() {
@@ -60,9 +57,6 @@ export const router = createBrowserRouter([
       { path: 'spaces/:spaceId', element: <Lazy><SpaceDetailPage /></Lazy> },
       { path: 'memory', element: <Lazy><MemoryPage /></Lazy> },
       { path: 'career', element: <Lazy><CareerPage /></Lazy> },
-      { path: 'tasks', element: <Lazy><TaskListPage /></Lazy> },
-      { path: 'email', element: <Lazy><EmailPage /></Lazy> },
-      { path: 'ask-docs', element: <Lazy><AskDocsPage /></Lazy> },
       { path: 'settings', element: <Lazy><SettingsPage /></Lazy> },
     ],
   },

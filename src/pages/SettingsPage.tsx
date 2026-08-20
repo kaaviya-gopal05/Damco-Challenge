@@ -4,7 +4,6 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, Input, Skeleton } from '@/components/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrentProfile, useUpdateProfile } from '@/hooks/useCurrentProfile';
-import { GmailConnectionCard } from '@/features/agents/GmailConnectionCard';
 
 const TIMEZONES = [
   'UTC',
@@ -96,8 +95,6 @@ export function SettingsPage() {
           )}
         </CardContent>
       </Card>
-
-      <GmailConnectionCard />
 
       <Card className="mt-6">
         <CardHeader>

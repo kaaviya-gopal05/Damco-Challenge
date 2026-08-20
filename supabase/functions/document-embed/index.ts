@@ -1,6 +1,8 @@
 // Supabase Edge Function: embeds every not-yet-embedded chunk of one document (Gemini
-// text-embedding-004), so it becomes searchable by document-ask's RAG lookup. Called by the
-// frontend right after a PDF's chunks are inserted at upload time.
+// gemini-embedding-001), so it becomes searchable via match_document_chunks. Called by the
+// frontend right after a PDF's chunks are inserted at upload time — this includes resumes
+// uploaded through the Career Intelligence chat flow (career.service.ts), which reuses this
+// exact pipeline before career-analyze runs retrieval over the result.
 //
 // Deploy: supabase functions deploy document-embed
 // Configure: supabase secrets set GEMINI_API_KEY=your-key (shared with ai-complete)

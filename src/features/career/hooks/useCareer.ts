@@ -14,15 +14,6 @@ export function useCareerProfiles() {
   });
 }
 
-export function useSelectCareerTrack() {
-  const { user } = useAuth();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (track: string) => careerService.getOrCreateCareerProfile(user!.id, track),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['career-profiles', user?.id] }),
-  });
-}
-
 export function useSkills() {
   return useQuery({ queryKey: ['skills'], queryFn: careerService.listSkills, staleTime: Infinity });
 }
@@ -47,27 +38,46 @@ export function useUpsertUserSkill(careerProfileId: string | undefined) {
   });
 }
 
-export function useAnalyzeResume() {
+export function useCreateResumeDocument() {
+  const { user } = useAuth();
+  return useMutation({
+    mutationFn: ({ resumeText, resumeFileName }: { resumeText: string; resumeFileName: string }) =>
+      careerService.createResumeDocument(user!.id, resumeText, resumeFileName),
+  });
+}
+
+export function useGenerateCareerProfile() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
-      careerProfile,
+      spaceId,
+      resumeDocumentId,
       resumeText,
-      fileName,
-      roleLabel,
+      resumeFileName,
+      targetRole,
+      jobDescription,
     }: {
-      careerProfile: CareerProfile;
+      spaceId: string;
+      resumeDocumentId: string;
       resumeText: string;
-      fileName: string;
-      roleLabel: string;
-    }) => careerService.analyzeAndSaveResume(user!.id, careerProfile, resumeText, fileName, roleLabel),
+      resumeFileName: string;
+      targetRole?: string;
+      jobDescription?: string;
+    }) =>
+      careerService.generateCareerProfileFromChat(
+        user!.id,
+        spaceId,
+        resumeDocumentId,
+        resumeText,
+        resumeFileName,
+        targetRole,
+        jobDescription
+      ),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['career-profiles', user?.id] });
       queryClient.invalidateQueries({ queryKey: ['user-skills', user?.id] });
-      notify.success('Resume analyzed');
     },
-    onError: () => notify.error('Could not analyze resume. Please try again.'),
   });
 }
 

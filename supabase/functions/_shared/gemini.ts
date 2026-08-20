@@ -17,13 +17,13 @@ const EMBEDDING_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/mod
 
 export class GeminiCallError extends Error {}
 
-export async function callGeminiJson(geminiKey: string, prompt: string): Promise<string> {
+async function callGemini(geminiKey: string, prompt: string, jsonMode: boolean): Promise<string> {
   const res = await fetch(GEMINI_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiKey },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json', temperature: 0.4 },
+      generationConfig: jsonMode ? { responseMimeType: 'application/json', temperature: 0.4 } : { temperature: 0.5 },
     }),
   });
 
@@ -36,6 +36,16 @@ export async function callGeminiJson(geminiKey: string, prompt: string): Promise
   const text: string = data.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('') ?? '';
   if (!text) throw new GeminiCallError('Gemini returned an empty response.');
   return text;
+}
+
+export function callGeminiJson(geminiKey: string, prompt: string): Promise<string> {
+  return callGemini(geminiKey, prompt, true);
+}
+
+/** Plain-text (non-JSON) completion — used for conversational answers like career-chat's
+ *  resume Q&A, where the response is markdown prose rather than a structured object. */
+export function callGeminiText(geminiKey: string, prompt: string): Promise<string> {
+  return callGemini(geminiKey, prompt, false);
 }
 
 /**

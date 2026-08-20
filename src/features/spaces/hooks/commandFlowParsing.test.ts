@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAffirmative, parseDeadline, parseHours, parseLevel } from '@/features/spaces/hooks/commandFlowParsing';
+import { isAffirmative, isValidRoleAnswer, parseDeadline, parseHours, parseLevel } from '@/features/spaces/hooks/commandFlowParsing';
 
 describe('isAffirmative', () => {
   it.each(['yes', 'Yes', 'y', 'yeah', 'sure', 'please', '  yes  '])('treats "%s" as affirmative', (input) => {
@@ -71,4 +71,17 @@ describe('parseHours', () => {
   it('defaults to 2 for a non-positive number', () => {
     expect(parseHours('0 hours')).toBe(2);
   });
+});
+
+describe('isValidRoleAnswer', () => {
+  it.each(['Data Scientist', 'Senior Product Manager', 'AI/ML Engineer'])('accepts "%s" as a role', (input) => {
+    expect(isValidRoleAnswer(input)).toBe(true);
+  });
+
+  it.each(['', '  ', 'x', "i don't know", 'idk', 'not sure', 'unsure', 'skip', 'no', 'n/a'])(
+    'rejects "%s" as too vague to be a role',
+    (input) => {
+      expect(isValidRoleAnswer(input)).toBe(false);
+    }
+  );
 });

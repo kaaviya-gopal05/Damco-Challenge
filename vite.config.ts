@@ -17,7 +17,16 @@ export default defineConfig({
     css: false,
     // Tests must be isolated from the developer's local, gitignored .env — otherwise
     // whatever VITE_AI_ENABLED happens to be set to on this machine leaks into
-    // ai.service.test.ts's assumptions about the default (unconfigured) state.
-    env: { VITE_AI_ENABLED: '' },
+    // ai.service.test.ts's assumptions about the default (unconfigured) state. Likewise,
+    // src/lib/supabase.ts throws at import time if the Supabase env vars are missing — fine for
+    // the real app (a real project must be configured), but no test here actually makes a real
+    // Supabase call, so a well-formed placeholder is enough to let modules that import it load in
+    // an environment with no .env at all (e.g. CI), instead of every such test crashing at
+    // import time before it even runs.
+    env: {
+      VITE_AI_ENABLED: '',
+      VITE_SUPABASE_URL: 'https://placeholder.supabase.co',
+      VITE_SUPABASE_ANON_KEY: 'placeholder-anon-key',
+    },
   },
 })

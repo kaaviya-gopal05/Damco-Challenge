@@ -30,6 +30,21 @@ const MIND_MAP_BRANCH_TEMPLATES = ['Fundamentals', 'Key Concepts', 'Applications
 const TODO_KEYWORDS = ['to-do', 'todo', 'to do list', 'task list', 'my tasks', 'remind me', 'things to do', 'need to do'];
 const URGENCY_WORDS = ['tonight', 'today', 'tomorrow', 'next week', 'next month', 'deadline', 'due '];
 const LEARNING_GOAL_WORDS = ['become a', 'become an', 'learn ', 'study ', 'master ', 'get better at', 'improve my', 'want to learn'];
+const CAREER_QUESTION_KEYWORDS = [
+  'my resume',
+  'my cv',
+  'job description',
+  ' jd ',
+  'jd?',
+  'suitable for',
+  'good fit',
+  'am i qualified',
+  'am i a fit',
+];
+
+function isCareerQuestion(lower: string): boolean {
+  return CAREER_QUESTION_KEYWORDS.some((kw) => lower.includes(kw));
+}
 
 /**
  * Heuristic for auto-detecting a task brain-dump typed/spoken directly into the chat (no
@@ -232,7 +247,7 @@ export const mockAiService: AiService = {
     await simulateLatency();
     return (
       `Got it — noted for "${spaceTitle}". Type \`/\` to generate a roadmap, mind map, flashcards, ` +
-      `PDF insights, or find learning videos for this. (Connect a Gemini API key for a real conversational reply.)`
+      `a resume skill-gap analysis, or find learning videos for this. (Connect a Gemini API key for a real conversational reply.)`
     );
   },
 
@@ -241,6 +256,7 @@ export const mockAiService: AiService = {
     const lower = message.toLowerCase();
     if (lower.includes('flashcard')) return { action: 'flashcards', topic: message };
     if (lower.includes('mind map') || lower.includes('mindmap')) return { action: 'mindmap', topic: message };
+    if (isCareerQuestion(lower)) return { action: 'career_question', topic: message };
     if (isTodoLikeMessage(lower)) return { action: 'todo', topic: message };
     if (
       lower.includes('roadmap') ||

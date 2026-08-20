@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Briefcase } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent, ProgressBar, Button, EmptyState } from '@/components/ui';
-import { CAREER_TRACKS } from '@/lib/constants';
 import type { CareerProfile } from '@/types/database';
 
 export function CareerProgressCard({
@@ -35,7 +34,7 @@ export function CareerProgressCard({
     );
   }
 
-  const trackLabel = CAREER_TRACKS.find((t) => t.id === careerProfile.career_track)?.label ?? careerProfile.target_role ?? 'Career prep';
+  const trackLabel = careerProfile.target_role ?? 'Career prep';
   const percent = totalCount === 0 ? 0 : Math.round((masteredCount / totalCount) * 100);
   const href = careerProfile.space_id ? `/app/spaces/${careerProfile.space_id}` : '/app/spaces';
 

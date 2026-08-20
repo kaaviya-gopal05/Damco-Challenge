@@ -1,10 +1,9 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Send, Sparkles, Paperclip, Mic, MicOff, ListChecks, X } from 'lucide-react';
+import { Send, Sparkles, Mic, MicOff, X } from 'lucide-react';
 import { Tooltip } from '@/components/ui';
 import { cn } from '@/lib/utils';
-import { useCreateSpace, useAttachToNewSpace } from '@/features/spaces/hooks/useSpaces';
-import { useUploadDocument } from '@/features/documents/hooks/useDocuments';
+import { useCreateSpace } from '@/features/spaces/hooks/useSpaces';
 import { useCurrentProfile } from '@/hooks/useCurrentProfile';
 import { useSpeechToText } from '@/hooks/useSpeechToText';
 import { SLASH_COMMANDS, type SlashCommandId } from '@/features/spaces/components/SlashCommandMenu';
@@ -19,8 +18,6 @@ const TOPIC_PLACEHOLDER: Record<FlowCommandId, string> = {
   flashcards: 'e.g. Python',
 };
 
-const TODO_PLACEHOLDER = 'e.g. Buy groceries, and then I have an exam next month, and I need to finish this pitch deck tonight';
-
 function isFlowCommand(id: SlashCommandId): id is FlowCommandId {
   return (FLOW_COMMANDS as readonly string[]).includes(id);
 }
@@ -28,13 +25,9 @@ function isFlowCommand(id: SlashCommandId): id is FlowCommandId {
 export function NewSpaceChatPage() {
   const [input, setInput] = useState('');
   const [pendingCommand, setPendingCommand] = useState<FlowCommandId | null>(null);
-  const [todoHintActive, setTodoHintActive] = useState(false);
   const createSpace = useCreateSpace();
-  const attachToNewSpace = useAttachToNewSpace();
-  const uploadDocument = useUploadDocument();
   const { data: profile } = useCurrentProfile();
   const navigate = useNavigate();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const speech = useSpeechToText((text) => setInput(text.slice(0, MAX_LENGTH)));
 
@@ -46,7 +39,6 @@ export function NewSpaceChatPage() {
   async function handleSend() {
     if (!topic || isBusy) return;
     setInput('');
-    setTodoHintActive(false);
     if (pendingCommand) {
       const kind = pendingCommand;
       setPendingCommand(null);
@@ -54,13 +46,11 @@ export function NewSpaceChatPage() {
       navigate(`/app/spaces/${space.id}?startFlow=${kind}`);
       return;
     }
-    // No pending flow — including right after clicking the To-do widget, which only hints the
-    // input rather than setting one. Create the space immediately (a fast DB insert, same as
-    // the widget flows above) and navigate right away — the actual message send + AI reply
-    // (intent classification, and for a task brain-dump, prioritization) happens after
-    // navigation, inside the chat itself, where the normal "Thinking..." bubble shows it's in
-    // progress. This avoids sitting on the welcome screen for the full AI round-trip before
-    // anything visible happens.
+    // No pending flow. Create the space immediately (a fast DB insert, same as the widget flows
+    // above) and navigate right away — the actual message send + AI reply (intent classification,
+    // and for a task brain-dump, prioritization) happens after navigation, inside the chat
+    // itself, where the normal "Thinking..." bubble shows it's in progress. This avoids sitting
+    // on the welcome screen for the full AI round-trip before anything visible happens.
     const title = topic.length > 60 ? `${topic.slice(0, 57)}...` : topic;
     const space = await createSpace.mutateAsync({ title, goalText: topic });
     navigate(`/app/spaces/${space.id}?firstMessage=${encodeURIComponent(topic)}`);
@@ -69,36 +59,21 @@ export function NewSpaceChatPage() {
   function handleWidget(id: SlashCommandId) {
     if (isFlowCommand(id)) {
       setPendingCommand(id);
-      setTodoHintActive(false);
       textareaRef.current?.focus();
-    } else if (id === 'todo') {
-      setPendingCommand(null);
-      setTodoHintActive(true);
-      textareaRef.current?.focus();
-    } else if (id === 'pdf') {
-      fileInputRef.current?.click();
+    } else if (id === 'career') {
+      // Unlike roadmap/mindmap/flashcards, career doesn't collect a topic here — its first
+      // question is a mandatory resume upload, asked once inside the space's chat, so there's
+      // nothing useful to type on this screen first.
+      createSpace.mutate(
+        { title: topic || 'Career Intelligence', goalText: topic || undefined },
+        { onSuccess: (space) => navigate(`/app/spaces/${space.id}?startFlow=career`) }
+      );
     } else if (id === 'videos') {
       createSpace.mutate(
         { title: topic || 'New space', goalText: topic || undefined },
         { onSuccess: (space) => navigate(`/app/spaces/${space.id}?open=videos`) }
       );
     }
-  }
-
-  async function handlePdfFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    const title = file.name.replace(/\.pdf$/i, '');
-    uploadDocument.mutate(
-      { file },
-      {
-        onSuccess: async ({ document }) => {
-          const space = await attachToNewSpace.mutateAsync({ table: 'documents', recordId: document.id, title, goalText: topic || undefined });
-          navigate(`/app/spaces/${space.id}?open=document:${document.id}`);
-        },
-      }
-    );
   }
 
   return (
@@ -150,21 +125,6 @@ export function NewSpaceChatPage() {
             </button>
           </div>
         )}
-        {todoHintActive && (
-          <div className="mb-2 flex items-center justify-between rounded-lg bg-brand-50 px-3 py-1.5">
-            <span className="flex items-center gap-1.5 text-xs font-medium text-brand-700">
-              <ListChecks className="h-3.5 w-3.5" />
-              To-do Task List — type or speak your tasks below, then send. No extra questions.
-            </span>
-            <button
-              onClick={() => setTodoHintActive(false)}
-              className="flex h-5 w-5 items-center justify-center rounded-md text-brand-500 hover:bg-brand-100"
-              aria-label="Cancel"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        )}
         <textarea
           ref={textareaRef}
           value={input}
@@ -175,20 +135,13 @@ export function NewSpaceChatPage() {
               handleSend();
             }
           }}
-          placeholder={pendingCommand ? TOPIC_PLACEHOLDER[pendingCommand] : todoHintActive ? TODO_PLACEHOLDER : 'Ask whatever you want....'}
+          placeholder={pendingCommand ? TOPIC_PLACEHOLDER[pendingCommand] : 'Ask whatever you want....'}
           rows={3}
           autoFocus
           maxLength={MAX_LENGTH}
           className="w-full resize-none bg-transparent px-2 py-1 text-sm text-ink-900 placeholder:text-ink-400 focus:outline-none"
         />
-        <div className="mt-2 flex items-center justify-between border-t border-ink-100 pt-2">
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-ink-500 transition-colors hover:bg-ink-50 hover:text-ink-700"
-          >
-            <Paperclip className="h-3.5 w-3.5" />
-            Add attachment
-          </button>
+        <div className="mt-2 flex items-center justify-end border-t border-ink-100 pt-2">
           <div className="flex items-center gap-3">
             <span className="text-xs text-ink-400">
               {input.length}/{MAX_LENGTH}
@@ -219,8 +172,6 @@ export function NewSpaceChatPage() {
           </div>
         </div>
       </div>
-
-      <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handlePdfFileChange} />
     </div>
   );
 }

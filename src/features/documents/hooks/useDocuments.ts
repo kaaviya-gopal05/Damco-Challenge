@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import * as documentsService from '@/services/documents.service';
 import * as flashcardsService from '@/services/flashcards.service';
-import { askDocuments } from '@/services/documentAsk.service';
 import { notify } from '@/lib/toast';
 import type { Document } from '@/types/database';
 
@@ -71,13 +70,6 @@ export function useGenerateFlashcardsFromDocument() {
       navigate(`/app/flashcards/${deck.id}`);
     },
     onError: () => notify.error('Could not generate flashcards from this document'),
-  });
-}
-
-export function useAskDocuments() {
-  return useMutation({
-    mutationFn: ({ question, documentId }: { question: string; documentId?: string }) => askDocuments(question, documentId),
-    onError: (error: Error) => notify.error(error.message || 'Could not answer that just now.'),
   });
 }
 

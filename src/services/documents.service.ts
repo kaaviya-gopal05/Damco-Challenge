@@ -7,11 +7,15 @@ import type { Document, DocumentInsight, InsightKind } from '@/types/database';
 export const MAX_PDF_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
 const CHUNK_SIZE = 2000;
 
+/** Excludes resumes uploaded through the Career Intelligence chat flow — they're chunked and
+ *  embedded through this same `documents` table for RAG, but were never uploaded as study
+ *  material, so they must never appear in the general Documents/Memory UI. */
 export async function listDocuments(userId: string): Promise<Document[]> {
   const { data, error } = await supabase
     .from('documents')
     .select('*')
     .eq('user_id', userId)
+    .eq('is_resume', false)
     .order('created_at', { ascending: false });
   if (error) throw error;
   return (data ?? []) as Document[];
